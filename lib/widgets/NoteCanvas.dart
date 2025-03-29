@@ -16,7 +16,8 @@ class _NoteCanvasState extends State<NoteCanvas> {
   List<Offset> currentLine = [];
 
   bool isDrawing = false;
-  // List<List<Offset>> lines = [];
+  bool isErasing = false; // isDrawing must be true during Erasing
+  var eraserRadius = 10;
 
   void _handlePointerDown(PointerEvent details) {
     setState(() {
@@ -24,6 +25,11 @@ class _NoteCanvasState extends State<NoteCanvas> {
       var y = details.localPosition.dy;
       currentLine.add(Offset(x, y));
       isDrawing = true;
+      if (isErasing) {
+        lines.removeWhere((line) =>
+            line.any((point) =>
+                (point - details.localPosition).distance < eraserRadius));
+      }
     });
   }
 
@@ -33,6 +39,11 @@ class _NoteCanvasState extends State<NoteCanvas> {
       var y = details.localPosition.dy;
       currentLine.add(Offset(x, y));
       isDrawing = true;
+      if (isErasing) {
+        lines.removeWhere((line) =>
+            line.any((point) =>
+                (point - details.localPosition).distance < eraserRadius));
+      }
     });
   }
 
@@ -114,7 +125,7 @@ class Line extends CustomPainter {
       for (var i = 1; i < line.length; i++) {
         canvas.drawLine(line[i-1], line[i], paint);
       }
-      // canvas.drawPoints(PointMode.lines, line, paint);
+      // canvas.drawPoints(PointMode.points, line, paint);
     }
     // canvas.drawPoints(PointMode.points, points, paint);
     // canvas.drawLine(PointMode.points, points, paint);
