@@ -2,6 +2,16 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+enum PaintMode{
+  drawing,
+  erasing
+}
+
+const List<Icon> PaintModeIcons = [
+  Icon(Icons.create),
+  Icon(Icons.edit_off),
+];
+
 class NoteCanvas extends StatefulWidget {
   const NoteCanvas({super.key});
 
@@ -14,18 +24,26 @@ class NoteCanvas extends StatefulWidget {
 class _NoteCanvasState extends State<NoteCanvas> {
   List<List<Offset>> lines = [];
   List<Offset> currentLine = [];
-
-  bool isDrawing = false;
-  bool isErasing = false; // isDrawing must be true during Erasing
+  
+  PaintMode mode = PaintMode.drawing;
+  bool penDown = false;
   var eraserRadius = 10;
+
+  void _setMode(PaintMode m) {
+    setState(() {
+      mode = m;
+    });
+  }
 
   void _handlePointerDown(PointerEvent details) {
     setState(() {
       var x = details.localPosition.dx;
       var y = details.localPosition.dy;
-      currentLine.add(Offset(x, y));
-      isDrawing = true;
-      if (isErasing) {
+      if (mode == PaintMode.drawing) { 
+        currentLine.add(Offset(x, y));
+        penDown = true;
+      }
+      if (mode == PaintMode.erasing) {
         lines.removeWhere((line) =>
             line.any((point) =>
                 (point - details.localPosition).distance < eraserRadius));
@@ -37,9 +55,11 @@ class _NoteCanvasState extends State<NoteCanvas> {
     setState(() {
       var x = details.localPosition.dx;
       var y = details.localPosition.dy;
-      currentLine.add(Offset(x, y));
-      isDrawing = true;
-      if (isErasing) {
+      if (mode == PaintMode.drawing) { 
+        currentLine.add(Offset(x, y));
+        penDown = true;
+      }
+      if (mode == PaintMode.erasing) {
         lines.removeWhere((line) =>
             line.any((point) =>
                 (point - details.localPosition).distance < eraserRadius));
@@ -51,10 +71,12 @@ class _NoteCanvasState extends State<NoteCanvas> {
     var x = details.localPosition.dx;
     var y = details.localPosition.dy;
     setState(() {
-      currentLine.add(Offset(x, y));
-      lines = [...lines, [..._compressLine(currentLine)]];
-      currentLine = [];
-      isDrawing = false;
+      if (mode == PaintMode.drawing) { 
+        currentLine.add(Offset(x, y));
+        lines = [...lines, [..._compressLine(currentLine)]];
+        currentLine = [];
+        penDown = false;
+      }
     });
   }
 
@@ -78,37 +100,44 @@ class _NoteCanvasState extends State<NoteCanvas> {
     // print(currentLine.length);
     return Center(
       key: Key('canvas'),
-      child: Listener(
-        onPointerDown: _handlePointerDown,
-        onPointerMove: _handlePointerMove,
-        onPointerUp: _handlePointerUp,
-        child: Stack(
-          key: Key("lines"),
-          children: [
-            Container(
-                key: Key("container"),
-                color: Colors.white,
-            ),
-            // Painter for all past lines drawn
-            RepaintBoundary(child: CustomPaint(isComplex: true, painter: Line(lines, "1", isDrawing: !isDrawing))),
-            // Painter for only the current line 
-            RepaintBoundary(child: CustomPaint(isComplex: true, painter: Line([currentLine], "2"))),
-            // for (var i = 0; i < lines.length; i++)
-            //   RepaintBoundary(child: CustomPaint(key: Key(i.toString()), painter: Line(lines[i], i, lines.length - 1))),
-          ],
-        ),
-      ),
+      child: Column(
+        children: [
+          PaintToolbar(setMode: _setMode, mode: mode),
+          Expanded(
+            child: Listener(
+                    onPointerDown: _handlePointerDown,
+                    onPointerMove: _handlePointerMove,
+                    onPointerUp: _handlePointerUp,
+                    child: Stack(
+            key: Key("lines"),
+            children: [
+              Container(
+                  key: Key("container"),
+                  color: Colors.white,
+              ),
+              // Painter for all past lines drawn
+              RepaintBoundary(child: CustomPaint(isComplex: true, painter: Line(lines, "1", penDown: !penDown))),
+              // Painter for only the current line 
+              RepaintBoundary(child: CustomPaint(isComplex: true, painter: Line([currentLine], "2"))),
+              // for (var i = 0; i < lines.length; i++)
+              //   RepaintBoundary(child: CustomPaint(key: Key(i.toString()), painter: Line(lines[i], i, lines.length - 1))),
+            ],
+                    ),
+                  ),
+          ),
+        ],
+      ) 
     );
   }
 }
 
 class Line extends CustomPainter {
   List<List<Offset>> points;
-  bool isDrawing;
+  bool penDown;
   String key;
 
   @override
-  Line(this.points, this.key, {this.isDrawing = true}) : super();
+  Line(this.points, this.key, {this.penDown = true}) : super();
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -142,7 +171,46 @@ class Line extends CustomPainter {
     // // return oldDelegate.points.length != points.length;
     // print(index.toString() + " " + currentLine.toString());
     // return index == currentLine;
-    print(key + " " + isDrawing.toString() + " " + now.toString());
-    return isDrawing;
+    print(key + " " + penDown.toString() + " " + now.toString());
+    return penDown;
   }
 }
+
+class PaintToolbar extends StatefulWidget {
+  PaintToolbar({super.key, required this.setMode, required this.mode});
+
+  late Function setMode;
+  late PaintMode mode;
+
+  @override State<StatefulWidget> createState() => PaintToolbarState();
+}
+
+class PaintToolbarState extends State<PaintToolbar> {
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      child: SegmentedButton<PaintMode>(
+        segments: [
+          ButtonSegment<PaintMode>(
+            value: PaintMode.drawing,
+            icon: PaintModeIcons[0],
+          ),
+          ButtonSegment<PaintMode>(
+            value: PaintMode.erasing,
+            icon: PaintModeIcons[1],
+          ),
+        ],
+        multiSelectionEnabled: false,
+        emptySelectionAllowed: false,
+
+        selected: <PaintMode>{widget.mode}, // started selection
+        onSelectionChanged: (Set<PaintMode> newSelection) {
+          widget.setMode(newSelection.first);
+        },
+      ),
+    );
+  }
+
+}
+
