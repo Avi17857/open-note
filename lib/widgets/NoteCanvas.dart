@@ -108,48 +108,72 @@ class _NoteCanvasState extends State<NoteCanvas> {
           PaintToolbar(setMode: _setMode, mode: mode),
           Expanded(
             child: InteractiveViewer(
-              boundaryMargin: const EdgeInsets.all(double.infinity),
+              boundaryMargin: const EdgeInsets.all(500),
               minScale: 0.5,
               maxScale: 2.0,
+              panEnabled: !penDown, // Disable panning while drawing
+              // onInteractionStart: (details) {
+              //   if (mode == PaintMode.drawing) {
+              //     // Prevent panning when drawing
+              //     return;
+              //   }
+              // },
+              // onInteractionUpdate: (details) {
+              //   if (mode == PaintMode.drawing) {
+              //     // Prevent panning when drawing
+              //     return;
+              //   }
+              // },
+              // onInteractionEnd: (details) {
+              //   // Allow panning again after interaction ends
+              // },
               child: Container(
                 width: MediaQuery.of(context).size.width * 2, // Double the screen width
                 height: MediaQuery.of(context).size.height * 2, // Double the screen height
                 color: Colors.grey[200], // Optional background color for the parent container
                 child: Center(
-                  child: Container(
-                    width: 600, // Fixed width for the drawing area
-                    height: 800, // Fixed height for the drawing area
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      border: Border.all(color: Colors.black, width: 1),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.grey.withOpacity(0.5),
-                          blurRadius: 4.0,
-                          spreadRadius: 2.0,
-                          offset: Offset(2.0, 2.0),
+                  child: Listener(
+                    behavior: HitTestBehavior.opaque, // Ensure pointer events are captured
+                    onPointerDown: _handlePointerDown,
+                    onPointerMove: _handlePointerMove,
+                    onPointerUp: _handlePointerUp,
+                    child: Center(
+                      child: Container(
+                        width: 600, // Fixed width for the drawing area
+                        height: 800, // Fixed height for the drawing area
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          border: Border.all(color: Colors.black, width: 1),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.grey.withOpacity(0.5),
+                              blurRadius: 4.0,
+                              spreadRadius: 2.0,
+                              offset: Offset(2.0, 2.0),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                    child: Stack(
-                      key: Key("canvasStack"),
-                      children: [
-                        Container(key: Key("container"), color: Colors.white),
-                        // Painter for all past lines drawn
-                        RepaintBoundary(
-                          child: CustomPaint(
-                            isComplex: true,
-                            painter: Line(lines, "1", penDown: !penDown),
-                          ),
+                        child: Stack(
+                          key: Key("canvasStack"),
+                          children: [
+                            Container(key: Key("container"), color: Colors.white),
+                            // Painter for all past lines drawn
+                            RepaintBoundary(
+                              child: CustomPaint(
+                                isComplex: true,
+                                painter: Line(lines, "1", penDown: !penDown),
+                              ),
+                            ),
+                            // Painter for only the current line
+                            RepaintBoundary(
+                              child: CustomPaint(
+                                isComplex: true,
+                                painter: Line([currentLine], "2"),
+                              ),
+                            ),
+                          ],
                         ),
-                        // Painter for only the current line
-                        RepaintBoundary(
-                          child: CustomPaint(
-                            isComplex: true,
-                            painter: Line([currentLine], "2"),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
