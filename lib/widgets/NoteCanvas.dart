@@ -39,7 +39,7 @@ class _NoteCanvasState extends State<NoteCanvas> {
     setState(() {
       var x = details.localPosition.dx;
       var y = details.localPosition.dy;
-      if (mode == PaintMode.drawing) { 
+      if (mode == PaintMode.drawing && details.kind == PointerDeviceKind.stylus) { 
         currentLine.add(Offset(x, y));
         penDown = true;
       }
@@ -55,9 +55,8 @@ class _NoteCanvasState extends State<NoteCanvas> {
     setState(() {
       var x = details.localPosition.dx;
       var y = details.localPosition.dy;
-      if (mode == PaintMode.drawing) { 
+      if (mode == PaintMode.drawing && penDown) { 
         currentLine.add(Offset(x, y));
-        penDown = true;
       }
       if (mode == PaintMode.erasing) {
         lines.removeWhere((line) =>
@@ -71,7 +70,7 @@ class _NoteCanvasState extends State<NoteCanvas> {
     var x = details.localPosition.dx;
     var y = details.localPosition.dy;
     setState(() {
-      if (mode == PaintMode.drawing) { 
+      if (mode == PaintMode.drawing && penDown) { 
         currentLine.add(Offset(x, y));
         lines = [...lines, [..._compressLine(currentLine)]];
         currentLine = [];
