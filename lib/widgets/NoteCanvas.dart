@@ -108,18 +108,23 @@ class _NoteCanvasState extends State<NoteCanvas> {
           PaintToolbar(setMode: _setMode, mode: mode),
           Expanded(
             child: InteractiveViewer(
-              child: Padding(
-                padding: const EdgeInsets.all(40.0),
-                child: Listener(
-                  onPointerDown: _handlePointerDown,
-                  onPointerMove: _handlePointerMove,
-                  onPointerUp: _handlePointerUp,
+              boundaryMargin: const EdgeInsets.all(double.infinity),
+              minScale: 0.5,
+              maxScale: 2.0,
+              child: Container(
+                width: MediaQuery.of(context).size.width * 2, // Double the screen width
+                height: MediaQuery.of(context).size.height * 2, // Double the screen height
+                color: Colors.grey[200], // Optional background color for the parent container
+                child: Center(
                   child: Container(
+                    width: 600, // Fixed width for the drawing area
+                    height: 800, // Fixed height for the drawing area
                     decoration: BoxDecoration(
-                      border: Border.all(color: Colors.black),
+                      color: Colors.white,
+                      border: Border.all(color: Colors.black, width: 1),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.grey,
+                          color: Colors.grey.withOpacity(0.5),
                           blurRadius: 4.0,
                           spreadRadius: 2.0,
                           offset: Offset(2.0, 2.0),
@@ -205,8 +210,8 @@ class Line extends CustomPainter {
 class PaintToolbar extends StatefulWidget {
   PaintToolbar({super.key, required this.setMode, required this.mode});
 
-  late Function setMode;
-  late PaintMode mode;
+  final Function setMode;
+  final PaintMode mode;
 
   @override
   State<StatefulWidget> createState() => PaintToolbarState();
