@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 enum PaintMode { drawing, erasing }
 
-const List<Icon> PaintModeIcons = [Icon(Icons.create), Icon(Icons.edit_off)];
+const List<Icon> paintModeIcons = [Icon(Icons.create), Icon(Icons.edit_off)];
 
 class NoteCanvas extends StatefulWidget {
   const NoteCanvas({super.key});
@@ -220,7 +220,7 @@ class Line extends CustomPainter {
   bool shouldRepaint(covariant Line oldDelegate) {
     // print(oldDelegate.points.length.toString() + '---');
     // print(points.length);
-    var now = new DateTime.now();
+    var now = DateTime.now();
     // print("repaint: " + index.toString() + " " + now.toString());
     // // print('---');
     // // return oldDelegate.points.length != points.length;
@@ -232,7 +232,7 @@ class Line extends CustomPainter {
 }
 
 class PaintToolbar extends StatefulWidget {
-  PaintToolbar({super.key, required this.setMode, required this.mode});
+  const PaintToolbar({super.key, required this.setMode, required this.mode});
 
   final Function setMode;
   final PaintMode mode;
@@ -249,11 +249,11 @@ class PaintToolbarState extends State<PaintToolbar> {
         segments: [
           ButtonSegment<PaintMode>(
             value: PaintMode.drawing,
-            icon: PaintModeIcons[0],
+            icon: paintModeIcons[0],
           ),
           ButtonSegment<PaintMode>(
             value: PaintMode.erasing,
-            icon: PaintModeIcons[1],
+            icon: paintModeIcons[1],
           ),
         ],
         multiSelectionEnabled: false,
