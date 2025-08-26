@@ -2,15 +2,9 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
-enum PaintMode{
-  drawing,
-  erasing
-}
+enum PaintMode { drawing, erasing }
 
-const List<Icon> PaintModeIcons = [
-  Icon(Icons.create),
-  Icon(Icons.edit_off),
-];
+const List<Icon> PaintModeIcons = [Icon(Icons.create), Icon(Icons.edit_off)];
 
 class NoteCanvas extends StatefulWidget {
   const NoteCanvas({super.key});
@@ -24,7 +18,7 @@ class NoteCanvas extends StatefulWidget {
 class _NoteCanvasState extends State<NoteCanvas> {
   List<List<Offset>> lines = [];
   List<Offset> currentLine = [];
-  
+
   PaintMode mode = PaintMode.drawing;
   bool penDown = false;
   var eraserRadius = 10;
@@ -39,14 +33,17 @@ class _NoteCanvasState extends State<NoteCanvas> {
     setState(() {
       var x = details.localPosition.dx;
       var y = details.localPosition.dy;
-      if (mode == PaintMode.drawing && details.kind == PointerDeviceKind.stylus) { 
+      if (mode == PaintMode.drawing &&
+          details.kind == PointerDeviceKind.stylus) {
         currentLine.add(Offset(x, y));
         penDown = true;
       }
       if (mode == PaintMode.erasing) {
-        lines.removeWhere((line) =>
-            line.any((point) =>
-                (point - details.localPosition).distance < eraserRadius));
+        lines.removeWhere(
+          (line) => line.any(
+            (point) => (point - details.localPosition).distance < eraserRadius,
+          ),
+        );
       }
     });
   }
@@ -55,13 +52,15 @@ class _NoteCanvasState extends State<NoteCanvas> {
     setState(() {
       var x = details.localPosition.dx;
       var y = details.localPosition.dy;
-      if (mode == PaintMode.drawing && penDown) { 
+      if (mode == PaintMode.drawing && penDown) {
         currentLine.add(Offset(x, y));
       }
       if (mode == PaintMode.erasing) {
-        lines.removeWhere((line) =>
-            line.any((point) =>
-                (point - details.localPosition).distance < eraserRadius));
+        lines.removeWhere(
+          (line) => line.any(
+            (point) => (point - details.localPosition).distance < eraserRadius,
+          ),
+        );
       }
     });
   }
@@ -70,9 +69,12 @@ class _NoteCanvasState extends State<NoteCanvas> {
     var x = details.localPosition.dx;
     var y = details.localPosition.dy;
     setState(() {
-      if (mode == PaintMode.drawing && penDown) { 
+      if (mode == PaintMode.drawing && penDown) {
         currentLine.add(Offset(x, y));
-        lines = [...lines, [..._compressLine(currentLine)]];
+        lines = [
+          ...lines,
+          [..._compressLine(currentLine)],
+        ];
         currentLine = [];
         penDown = false;
       }
@@ -82,13 +84,15 @@ class _NoteCanvasState extends State<NoteCanvas> {
   List<Offset> _compressLine(List<Offset> line) {
     List<Offset> newLine = [];
     const inc = 8;
-    if (line.length < inc*2) {return line;}
-    for (var i = inc; i < line.length-1; i+=inc){
-      if ((line[i-inc] - line[i]).distance > 0.5) {
-        newLine.add(line[i-inc]);
+    if (line.length < inc * 2) {
+      return line;
+    }
+    for (var i = inc; i < line.length - 1; i += inc) {
+      if ((line[i - inc] - line[i]).distance > 0.5) {
+        newLine.add(line[i - inc]);
       }
     }
-    newLine.add(line[line.length-1]);
+    newLine.add(line[line.length - 1]);
     return newLine;
   }
 
@@ -98,34 +102,57 @@ class _NoteCanvasState extends State<NoteCanvas> {
     // print(lines.length);
     // print(currentLine.length);
     return Center(
-      key: Key('canvas'),
+      key: Key('NotePage'),
       child: Column(
         children: [
           PaintToolbar(setMode: _setMode, mode: mode),
           Expanded(
-            child: Listener(
-                    onPointerDown: _handlePointerDown,
-                    onPointerMove: _handlePointerMove,
-                    onPointerUp: _handlePointerUp,
+            child: InteractiveViewer(
+              child: Padding(
+                padding: const EdgeInsets.all(40.0),
+                child: Listener(
+                  onPointerDown: _handlePointerDown,
+                  onPointerMove: _handlePointerMove,
+                  onPointerUp: _handlePointerUp,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.black),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.grey,
+                          blurRadius: 4.0,
+                          spreadRadius: 2.0,
+                          offset: Offset(2.0, 2.0),
+                        ),
+                      ],
+                    ),
                     child: Stack(
-            key: Key("lines"),
-            children: [
-              Container(
-                  key: Key("container"),
-                  color: Colors.white,
-              ),
-              // Painter for all past lines drawn
-              RepaintBoundary(child: CustomPaint(isComplex: true, painter: Line(lines, "1", penDown: !penDown))),
-              // Painter for only the current line 
-              RepaintBoundary(child: CustomPaint(isComplex: true, painter: Line([currentLine], "2"))),
-              // for (var i = 0; i < lines.length; i++)
-              //   RepaintBoundary(child: CustomPaint(key: Key(i.toString()), painter: Line(lines[i], i, lines.length - 1))),
-            ],
+                      key: Key("canvasStack"),
+                      children: [
+                        Container(key: Key("container"), color: Colors.white),
+                        // Painter for all past lines drawn
+                        RepaintBoundary(
+                          child: CustomPaint(
+                            isComplex: true,
+                            painter: Line(lines, "1", penDown: !penDown),
+                          ),
+                        ),
+                        // Painter for only the current line
+                        RepaintBoundary(
+                          child: CustomPaint(
+                            isComplex: true,
+                            painter: Line([currentLine], "2"),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
+                ),
+              ),
+            ),
           ),
         ],
-      ) 
+      ),
     );
   }
 }
@@ -149,9 +176,9 @@ class Line extends CustomPainter {
     //   canvas.drawLine(points[i], points[i + 1], paint);
     // }
     // var now = new DateTime.now();
-    for (final line in points){
+    for (final line in points) {
       for (var i = 1; i < line.length; i++) {
-        canvas.drawLine(line[i-1], line[i], paint);
+        canvas.drawLine(line[i - 1], line[i], paint);
       }
       // canvas.drawPoints(PointMode.points, line, paint);
     }
@@ -181,11 +208,11 @@ class PaintToolbar extends StatefulWidget {
   late Function setMode;
   late PaintMode mode;
 
-  @override State<StatefulWidget> createState() => PaintToolbarState();
+  @override
+  State<StatefulWidget> createState() => PaintToolbarState();
 }
 
 class PaintToolbarState extends State<PaintToolbar> {
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -210,6 +237,4 @@ class PaintToolbarState extends State<PaintToolbar> {
       ),
     );
   }
-
 }
-
