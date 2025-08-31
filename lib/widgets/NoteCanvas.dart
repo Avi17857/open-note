@@ -27,8 +27,8 @@ class _NoteCanvasState extends State<NoteCanvas> {
 
   final GlobalKey _repaintKey = GlobalKey();
   final GlobalKey _canvasKey = GlobalKey();
-  ui.Image? _cachedImage;
-  int _activePointerId = -1; // Track the active stylus pointer
+  // ui.Image? _cachedImage;
+  // int _activePointerId = -1; // Track the active stylus pointer
 
   void _setMode(PaintMode m) {
     setState(() {
@@ -38,7 +38,7 @@ class _NoteCanvasState extends State<NoteCanvas> {
 
   void _handlePointerDown(PointerEvent details) {
     // Only start drawing with a stylus
-    if (details.kind != PointerDeviceKind.stylus) return;
+    // if (details.kind != PointerDeviceKind.stylus) return;
 
     // Convert to coordinates local to the canvas box
     final box = _canvasKey.currentContext?.findRenderObject() as RenderBox?;
@@ -46,18 +46,22 @@ class _NoteCanvasState extends State<NoteCanvas> {
     final local = box.globalToLocal(details.position);
 
     // Ensure the pointer is within the canvas bounds
-    if (local.dx < 0 || local.dy < 0 || local.dx > box.size.width || local.dy > box.size.height) return;
+    if (local.dx < 0 ||
+        local.dy < 0 ||
+        local.dx > box.size.width ||
+        local.dy > box.size.height) {
+      return;
+    }
 
     setState(() {
       if (mode == PaintMode.drawing) {
-        _cachedImage = null; // Clear cached image so painting resumes
-        _activePointerId = details.pointer;
         currentLine.add(local);
         penDown = true;
       } else if (mode == PaintMode.erasing) {
         // Erase using canvas-local coordinates
         lines.removeWhere(
-          (line) => line.any((point) => (point - local).distance < eraserRadius),
+          (line) =>
+              line.any((point) => (point - local).distance < eraserRadius),
         );
       }
     });
@@ -65,29 +69,37 @@ class _NoteCanvasState extends State<NoteCanvas> {
 
   void _handlePointerMove(PointerEvent details) {
     // Only accept moves from the active stylus pointer
-    if (details.pointer != _activePointerId) return;
-    if (details.kind != PointerDeviceKind.stylus) return;
+    // if (details.pointer != _activePointerId) return;
+    // if (details.kind != PointerDeviceKind.stylus) return;
 
     final box = _canvasKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null) return;
     final local = box.globalToLocal(details.position);
 
     // Ignore moves outside the canvas
-    if (local.dx < 0 || local.dy < 0 || local.dx > box.size.width || local.dy > box.size.height) return;
+    if (local.dx < 0 ||
+        local.dy < 0 ||
+        local.dx > box.size.width ||
+        local.dy > box.size.height) {
+      return;
+    }
 
     setState(() {
-      if (mode == PaintMode.drawing && penDown) {
+      if (mode == PaintMode.drawing) {
         currentLine.add(local);
       } else if (mode == PaintMode.erasing) {
-        lines.removeWhere((line) => line.any((point) => (point - local).distance < eraserRadius));
+        lines.removeWhere(
+          (line) =>
+              line.any((point) => (point - local).distance < eraserRadius),
+        );
       }
     });
   }
 
   void _handlePointerUp(PointerEvent details) {
     // Only accept up from the active stylus pointer
-    if (details.pointer != _activePointerId) return;
-    if (details.kind != PointerDeviceKind.stylus) return;
+    // if (details.pointer != _activePointerId) return;
+    // if (details.kind != PointerDeviceKind.stylus) return;
 
     final box = _canvasKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null) return;
@@ -96,29 +108,46 @@ class _NoteCanvasState extends State<NoteCanvas> {
     setState(() {
       if (mode == PaintMode.drawing && penDown) {
         // Only finalize if within bounds
-        if (!(local.dx < 0 || local.dy < 0 || local.dx > box.size.width || local.dy > box.size.height)) {
+        if (!(local.dx < 0 ||
+            local.dy < 0 ||
+            local.dx > box.size.width ||
+            local.dy > box.size.height)) {
           currentLine.add(local);
         }
-        lines = [...lines, [...currentLine]];
+        lines = [...lines, currentLine];
         currentLine = [];
         penDown = false;
-        _activePointerId = -1;
 
         // Capture the canvas as an image after drawing
-        _captureCanvasAsImage();
+        // _captureCanvasAsImage();
       }
     });
   }
 
-  Future<void> _captureCanvasAsImage() async {
-    final boundary = _repaintKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-    if (boundary != null) {
-      final image = await boundary.toImage(pixelRatio: 1.0);
-      setState(() {
-        _cachedImage = image;
-      });
+  List<Offset> _compressLine(List<Offset> line) {
+    List<Offset> newLine = [];
+    const inc = 8;
+    if (line.length < inc * 2) {
+      return line;
     }
+    for (var i = inc; i < line.length - 1; i += inc) {
+      if ((line[i - inc] - line[i]).distance > 0.5) {
+        newLine.add(line[i - inc]);
+      }
+    }
+    newLine.add(line[line.length - 1]);
+    return newLine;
   }
+
+  // Future<void> _captureCanvasAsImage() async {
+  //   final boundary = _repaintKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+  //   if (boundary != null) {
+  //     final image = await boundary.toImage(pixelRatio: 1.0);
+  //     setState(() {
+  //       _cachedImage = image;
+  //     });
+  //   }
+  // }
 
   @override
   Widget build(BuildContext context) {
@@ -153,7 +182,9 @@ class _NoteCanvasState extends State<NoteCanvas> {
               // },
               child: Center(
                 child: Listener(
-                  behavior: HitTestBehavior.opaque, // Ensure pointer events are captured
+                  behavior:
+                      HitTestBehavior
+                          .opaque, // Ensure pointer events are captured
                   onPointerDown: _handlePointerDown,
                   onPointerMove: _handlePointerMove,
                   onPointerUp: _handlePointerUp,
@@ -179,31 +210,28 @@ class _NoteCanvasState extends State<NoteCanvas> {
                         child: Stack(
                           key: Key("canvasStack"),
                           children: [
-                            if (_cachedImage != null)
-                              CustomPaint(
-                                painter: ImagePainter(image: _cachedImage!),
+                            Container(
+                              key: Key("container"),
+                              color: Colors.white,
+                            ),
+                            // Painter for all past lines drawn
+                            RepaintBoundary(
+                              child: CustomPaint(
+                                isComplex: true,
+                                painter: Line(lines, "1", penDown: !penDown),
                               ),
-                            if (_cachedImage == null) ...[
-                              Container(key: Key("container"), color: Colors.white),
-                              // Painter for all past lines drawn
-                              // RepaintBoundary(
-                              //   child: CustomPaint(
-                              //     isComplex: true,
-                              //     painter: Line(lines, "1", penDown: !penDown),
-                              //   ),
-                              // ),
-                              // Painter for only the current line
-                              RepaintBoundary(
-                                child: CustomPaint(
-                                  isComplex: true,
-                                  painter: Line([currentLine], "2"),
-                                ),
+                            ),
+                            // Painter for only the current line
+                            RepaintBoundary(
+                              child: CustomPaint(
+                                isComplex: true,
+                                painter: Line([currentLine], "2"),
                               ),
-                            ],
+                            ),
                           ],
                         ),
                       ),
-                     ),
+                    ),
                   ),
                 ),
               ),
@@ -234,6 +262,7 @@ class Line extends CustomPainter {
     //   canvas.drawLine(points[i], points[i + 1], paint);
     // }
     // var now = new DateTime.now();
+
     for (final line in points) {
       for (var i = 1; i < line.length; i++) {
         canvas.drawLine(line[i - 1], line[i], paint);
@@ -255,7 +284,7 @@ class Line extends CustomPainter {
     // // return oldDelegate.points.length != points.length;
     // print(index.toString() + " " + currentLine.toString());
     // return index == currentLine;
-    print(key + " " + penDown.toString() + " " + now.toString());
+    print("$key $penDown $now");
     return penDown;
   }
 }
@@ -290,26 +319,24 @@ class PaintToolbar extends StatefulWidget {
 class PaintToolbarState extends State<PaintToolbar> {
   @override
   Widget build(BuildContext context) {
-    return Container(
-      child: SegmentedButton<PaintMode>(
-        segments: [
-          ButtonSegment<PaintMode>(
-            value: PaintMode.drawing,
-            icon: paintModeIcons[0],
-          ),
-          ButtonSegment<PaintMode>(
-            value: PaintMode.erasing,
-            icon: paintModeIcons[1],
-          ),
-        ],
-        multiSelectionEnabled: false,
-        emptySelectionAllowed: false,
+    return SegmentedButton<PaintMode>(
+      segments: [
+        ButtonSegment<PaintMode>(
+          value: PaintMode.drawing,
+          icon: paintModeIcons[0],
+        ),
+        ButtonSegment<PaintMode>(
+          value: PaintMode.erasing,
+          icon: paintModeIcons[1],
+        ),
+      ],
+      multiSelectionEnabled: false,
+      emptySelectionAllowed: false,
 
-        selected: <PaintMode>{widget.mode}, // started selection
-        onSelectionChanged: (Set<PaintMode> newSelection) {
-          widget.setMode(newSelection.first);
-        },
-      ),
+      selected: <PaintMode>{widget.mode}, // started selection
+      onSelectionChanged: (Set<PaintMode> newSelection) {
+        widget.setMode(newSelection.first);
+      },
     );
   }
 }
