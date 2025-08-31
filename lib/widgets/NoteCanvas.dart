@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 
 enum PaintMode { drawing, erasing }
 
@@ -18,7 +19,8 @@ class NoteCanvas extends StatefulWidget {
 }
 
 class _NoteCanvasState extends State<NoteCanvas> {
-  List<List<Offset>> lines = [];
+  // removed multi-line history to keep only the active stroke in memory,
+  // finished strokes are rasterized into _cachedImage
   List<Offset> currentLine = [];
 
   PaintMode mode = PaintMode.drawing;
@@ -27,8 +29,8 @@ class _NoteCanvasState extends State<NoteCanvas> {
 
   final GlobalKey _repaintKey = GlobalKey();
   final GlobalKey _canvasKey = GlobalKey();
-  // ui.Image? _cachedImage;
-  // int _activePointerId = -1; // Track the active stylus pointer
+
+  ui.Image? _cachedImage;
 
   void _setMode(PaintMode m) {
     setState(() {
@@ -55,21 +57,18 @@ class _NoteCanvasState extends State<NoteCanvas> {
 
     setState(() {
       if (mode == PaintMode.drawing) {
-        currentLine.add(local);
+        // start a new single current line
+        currentLine = [local];
         penDown = true;
       } else if (mode == PaintMode.erasing) {
-        // Erase using canvas-local coordinates
-        lines.removeWhere(
-          (line) =>
-              line.any((point) => (point - local).distance < eraserRadius),
-        );
+        // Eraser not implemented against rasterized image here.
+        // You can implement erasing by drawing transparent strokes onto a new image.
       }
     });
   }
 
   void _handlePointerMove(PointerEvent details) {
-    // Only accept moves from the active stylus pointer
-    // if (details.pointer != _activePointerId) return;
+    // Only accept stylus moves
     // if (details.kind != PointerDeviceKind.stylus) return;
 
     final box = _canvasKey.currentContext?.findRenderObject() as RenderBox?;
@@ -85,75 +84,79 @@ class _NoteCanvasState extends State<NoteCanvas> {
     }
 
     setState(() {
-      if (mode == PaintMode.drawing) {
+      if (mode == PaintMode.drawing && penDown) {
         currentLine.add(local);
       } else if (mode == PaintMode.erasing) {
-        lines.removeWhere(
-          (line) =>
-              line.any((point) => (point - local).distance < eraserRadius),
-        );
+        // Erasing against raster image would require compositing onto a new image.
       }
     });
   }
 
-  void _handlePointerUp(PointerEvent details) {
-    // Only accept up from the active stylus pointer
-    // if (details.pointer != _activePointerId) return;
+  Future<void> _handlePointerUp(PointerEvent details) async {
+    // Only accept stylus up
     // if (details.kind != PointerDeviceKind.stylus) return;
 
     final box = _canvasKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null) return;
     final local = box.globalToLocal(details.position);
 
-    setState(() {
-      if (mode == PaintMode.drawing && penDown) {
-        // Only finalize if within bounds
-        if (!(local.dx < 0 ||
-            local.dy < 0 ||
-            local.dx > box.size.width ||
-            local.dy > box.size.height)) {
-          currentLine.add(local);
-        }
-        lines = [...lines, currentLine];
-        currentLine = [];
+    if (mode == PaintMode.drawing && penDown) {
+      // finalize stroke only if inside bounds
+      if (!(local.dx < 0 ||
+          local.dy < 0 ||
+          local.dx > box.size.width ||
+          local.dy > box.size.height)) {
+        currentLine.add(local);
+      }
+
+      // ensure the current stroke is painted in the next frame, then capture
+      setState(() {
         penDown = false;
+      });
 
-        // Capture the canvas as an image after drawing
-        // _captureCanvasAsImage();
-      }
-    });
+      // Wait until the frame paints the stroke, then capture the boundary.
+      // SchedulerBinding ensures we wait for end of frame.
+      await SchedulerBinding.instance.endOfFrame;
+      await _captureCanvasAsImage();
+
+      // clear currentLine after rasterizing into _cachedImage
+      setState(() {
+        currentLine = [];
+      });
+    }
   }
 
-  List<Offset> _compressLine(List<Offset> line) {
-    List<Offset> newLine = [];
-    const inc = 8;
-    if (line.length < inc * 2) {
-      return line;
+  Future<void> _captureCanvasAsImage() async {
+    try {
+      final boundary =
+          _repaintKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) return;
+
+      // choose device pixel ratio for better quality if desired
+      final pixelRatio = ui.window.devicePixelRatio;
+      final image = await boundary.toImage(pixelRatio: pixelRatio);
+
+      // dispose previous image to free memory
+      _cachedImage?.dispose();
+
+      setState(() {
+        _cachedImage = image;
+      });
+    } catch (e) {
+      // ignore capture errors in debug, or log if needed
+      debugPrint('capture error: $e');
     }
-    for (var i = inc; i < line.length - 1; i += inc) {
-      if ((line[i - inc] - line[i]).distance > 0.5) {
-        newLine.add(line[i - inc]);
-      }
-    }
-    newLine.add(line[line.length - 1]);
-    return newLine;
   }
 
-  // Future<void> _captureCanvasAsImage() async {
-  //   final boundary = _repaintKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-  //   if (boundary != null) {
-  //     final image = await boundary.toImage(pixelRatio: 1.0);
-  //     setState(() {
-  //       _cachedImage = image;
-  //     });
-  //   }
-  // }
+  @override
+  void dispose() {
+    _cachedImage?.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     print("REBUILDING");
-    // print(lines.length);
-    // print(currentLine.length);
     return Center(
       key: Key('NotePage'),
       child: Column(
@@ -165,29 +168,12 @@ class _NoteCanvasState extends State<NoteCanvas> {
               minScale: 0.5,
               maxScale: 2.0,
               panEnabled: !penDown, // Disable panning while drawing
-              // onInteractionStart: (details) {
-              //   if (mode == PaintMode.drawing) {
-              //     // Prevent panning when drawing
-              //     return;
-              //   }
-              // },
-              // onInteractionUpdate: (details) {
-              //   if (mode == PaintMode.drawing) {
-              //     // Prevent panning when drawing
-              //     return;
-              //   }
-              // },
-              // onInteractionEnd: (details) {
-              //   // Allow panning again after interaction ends
-              // },
               child: Center(
                 child: Listener(
-                  behavior:
-                      HitTestBehavior
-                          .opaque, // Ensure pointer events are captured
+                  behavior: HitTestBehavior.opaque,
                   onPointerDown: _handlePointerDown,
                   onPointerMove: _handlePointerMove,
-                  onPointerUp: _handlePointerUp,
+                  onPointerUp: (details) => _handlePointerUp(details),
                   child: Center(
                     child: Container(
                       width: 600, // Fixed width for the drawing area
@@ -210,23 +196,17 @@ class _NoteCanvasState extends State<NoteCanvas> {
                         child: Stack(
                           key: Key("canvasStack"),
                           children: [
-                            Container(
-                              key: Key("container"),
-                              color: Colors.white,
-                            ),
-                            // Painter for all past lines drawn
-                            RepaintBoundary(
-                              child: CustomPaint(
-                                isComplex: true,
-                                painter: Line(lines, "1", penDown: !penDown),
+                            // rasterized background of finished strokes
+                            if (_cachedImage != null)
+                              CustomPaint(
+                                painter: ImagePainter(image: _cachedImage!),
+                                size: Size.infinite,
                               ),
-                            ),
-                            // Painter for only the current line
-                            RepaintBoundary(
-                              child: CustomPaint(
-                                isComplex: true,
-                                painter: Line([currentLine], "2"),
-                              ),
+                            // live stroke being drawn (only one list of points)
+                            CustomPaint(
+                              isComplex: true,
+                              painter: Line([currentLine], "live", penDown: penDown),
+                              size: Size.infinite,
                             ),
                           ],
                         ),
@@ -253,39 +233,24 @@ class Line extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint =
-        Paint()
-          ..color = Colors.black
-          ..strokeWidth = 4
-          ..strokeCap = StrokeCap.round;
-    // for (var i = 0; i < points.length - 1; i++) {
-    //   canvas.drawLine(points[i], points[i + 1], paint);
-    // }
-    // var now = new DateTime.now();
+    final paint = Paint()
+      ..color = Colors.black
+      ..strokeWidth = 4
+      ..strokeCap = StrokeCap.round;
 
     for (final line in points) {
       for (var i = 1; i < line.length; i++) {
         canvas.drawLine(line[i - 1], line[i], paint);
       }
-      // canvas.drawPoints(PointMode.points, line, paint);
     }
-    // canvas.drawPoints(PointMode.points, points, paint);
-    // canvas.drawLine(PointMode.points, points, paint);
-    // canvas.drawVertices(Vertices(VertexMode.triangleFan, [Offset(x, y)]), BlendMode.color, paint);
   }
 
   @override
   bool shouldRepaint(covariant Line oldDelegate) {
-    // print(oldDelegate.points.length.toString() + '---');
-    // print(points.length);
-    var now = DateTime.now();
-    // print("repaint: " + index.toString() + " " + now.toString());
-    // // print('---');
-    // // return oldDelegate.points.length != points.length;
-    // print(index.toString() + " " + currentLine.toString());
-    // return index == currentLine;
-    print("$key $penDown $now");
-    return penDown;
+    // repaint when the live points change (or when drawing)
+    if (identical(oldDelegate.points, points) == false) return true;
+    if (oldDelegate.penDown != penDown) return true;
+    return false;
   }
 }
 
@@ -302,7 +267,7 @@ class ImagePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant ImagePainter oldDelegate) {
-    return false; // No need to repaint since the image doesn't change
+    return oldDelegate.image != image;
   }
 }
 
@@ -332,8 +297,7 @@ class PaintToolbarState extends State<PaintToolbar> {
       ],
       multiSelectionEnabled: false,
       emptySelectionAllowed: false,
-
-      selected: <PaintMode>{widget.mode}, // started selection
+      selected: <PaintMode>{widget.mode},
       onSelectionChanged: (Set<PaintMode> newSelection) {
         widget.setMode(newSelection.first);
       },
