@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
+import 'dart:math' as math;
 
 enum PaintMode { drawing, erasing }
 
@@ -19,18 +20,26 @@ class NoteCanvas extends StatefulWidget {
 }
 
 class _NoteCanvasState extends State<NoteCanvas> {
-  // removed multi-line history to keep only the active stroke in memory,
-  // finished strokes are rasterized into _cachedImage
+  // only keep one live stroke in memory
   List<Offset> currentLine = [];
+
+  // eraser path while erasing (visual only until applied to cached image)
+  List<Offset> eraserPoints = [];
 
   PaintMode mode = PaintMode.drawing;
   bool penDown = false;
-  var eraserRadius = 10;
+  var eraserRadius = 20.0;
 
   final GlobalKey _repaintKey = GlobalKey();
   final GlobalKey _canvasKey = GlobalKey();
 
   ui.Image? _cachedImage;
+
+  // track active pointer so multi-touch doesn't create strokes
+  int? _activePointerId;
+
+  // thinning threshold (in logical pixels)
+  final double _thinningDistance = 2.5;
 
   void _setMode(PaintMode m) {
     setState(() {
@@ -38,16 +47,33 @@ class _NoteCanvasState extends State<NoteCanvas> {
     });
   }
 
-  void _handlePointerDown(PointerEvent details) {
-    // Only start drawing with a stylus
-    // if (details.kind != PointerDeviceKind.stylus) return;
+  bool _isStylus(PointerEvent event) =>
+      event.kind == PointerDeviceKind.stylus;
 
-    // Convert to coordinates local to the canvas box
+  double _dist(Offset a, Offset b) => (a - b).distance;
+
+  void _addPointThinned(List<Offset> list, Offset p) {
+    if (list.isEmpty) {
+      list.add(p);
+      return;
+    }
+    if (_dist(list.last, p) >= _thinningDistance) {
+      list.add(p);
+    }
+  }
+
+  void _handlePointerDown(PointerEvent details) {
+    // Strictly stylus-only
+    // if (!_isStylus(details)) return;
+    // If another pointer is active ignore additional pointers
+    if (_activePointerId != null) return;
+    _activePointerId = details.pointer;
+
     final box = _canvasKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null) return;
     final local = box.globalToLocal(details.position);
 
-    // Ensure the pointer is within the canvas bounds
+    // ensure inside canvas
     if (local.dx < 0 ||
         local.dy < 0 ||
         local.dx > box.size.width ||
@@ -56,26 +82,26 @@ class _NoteCanvasState extends State<NoteCanvas> {
     }
 
     setState(() {
+      penDown = true;
       if (mode == PaintMode.drawing) {
-        // start a new single current line
+        // start only one live stroke
         currentLine = [local];
-        penDown = true;
       } else if (mode == PaintMode.erasing) {
-        // Eraser not implemented against rasterized image here.
-        // You can implement erasing by drawing transparent strokes onto a new image.
+        eraserPoints = [local];
       }
     });
   }
 
   void _handlePointerMove(PointerEvent details) {
-    // Only accept stylus moves
-    // if (details.kind != PointerDeviceKind.stylus) return;
+    // strictly stylus and only the active pointer
+    // if (!_isStylus(details)) return;
+    if (_activePointerId == null || details.pointer != _activePointerId) return;
 
     final box = _canvasKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null) return;
     final local = box.globalToLocal(details.position);
 
-    // Ignore moves outside the canvas
+    // ignore moves outside the canvas bounds
     if (local.dx < 0 ||
         local.dy < 0 ||
         local.dx > box.size.width ||
@@ -85,19 +111,28 @@ class _NoteCanvasState extends State<NoteCanvas> {
 
     setState(() {
       if (mode == PaintMode.drawing && penDown) {
-        currentLine.add(local);
-      } else if (mode == PaintMode.erasing) {
-        // Erasing against raster image would require compositing onto a new image.
+        _addPointThinned(currentLine, local);
+      } else if (mode == PaintMode.erasing && penDown) {
+        _addPointThinned(eraserPoints, local);
       }
     });
   }
 
   Future<void> _handlePointerUp(PointerEvent details) async {
-    // Only accept stylus up
-    // if (details.kind != PointerDeviceKind.stylus) return;
+    // strictly stylus and only the active pointer
+    // if (!_isStylus(details)) {
+    //   _clearActivePointer();
+    //   return;
+    // }
+    if (_activePointerId == null || details.pointer != _activePointerId) {
+      return;
+    }
 
     final box = _canvasKey.currentContext?.findRenderObject() as RenderBox?;
-    if (box == null) return;
+    if (box == null) {
+      _clearActivePointer();
+      return;
+    }
     final local = box.globalToLocal(details.position);
 
     if (mode == PaintMode.drawing && penDown) {
@@ -106,24 +141,56 @@ class _NoteCanvasState extends State<NoteCanvas> {
           local.dy < 0 ||
           local.dx > box.size.width ||
           local.dy > box.size.height)) {
-        currentLine.add(local);
+        _addPointThinned(currentLine, local);
       }
 
-      // ensure the current stroke is painted in the next frame, then capture
       setState(() {
         penDown = false;
       });
 
-      // Wait until the frame paints the stroke, then capture the boundary.
-      // SchedulerBinding ensures we wait for end of frame.
+      // ensure the stroke renders, then rasterize into cached image
       await SchedulerBinding.instance.endOfFrame;
       await _captureCanvasAsImage();
 
-      // clear currentLine after rasterizing into _cachedImage
       setState(() {
         currentLine = [];
       });
+    } else if (mode == PaintMode.erasing && penDown) {
+      // finalize eraser path and apply to the cached image
+      if (!(local.dx < 0 ||
+          local.dy < 0 ||
+          local.dx > box.size.width ||
+          local.dy > box.size.height)) {
+        _addPointThinned(eraserPoints, local);
+      }
+
+      setState(() {
+        penDown = false;
+      });
+
+      await SchedulerBinding.instance.endOfFrame;
+      await _applyEraserToImage(eraserPoints);
+
+      setState(() {
+        eraserPoints = [];
+      });
     }
+
+    _clearActivePointer();
+  }
+
+  void _handlePointerCancel(PointerEvent details) {
+    if (_activePointerId == null || details.pointer != _activePointerId) return;
+    setState(() {
+      penDown = false;
+      currentLine = [];
+      eraserPoints = [];
+    });
+    _clearActivePointer();
+  }
+
+  void _clearActivePointer() {
+    _activePointerId = null;
   }
 
   Future<void> _captureCanvasAsImage() async {
@@ -132,7 +199,6 @@ class _NoteCanvasState extends State<NoteCanvas> {
           _repaintKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
       if (boundary == null) return;
 
-      // choose device pixel ratio for better quality if desired
       final pixelRatio = ui.window.devicePixelRatio;
       final image = await boundary.toImage(pixelRatio: pixelRatio);
 
@@ -143,9 +209,66 @@ class _NoteCanvasState extends State<NoteCanvas> {
         _cachedImage = image;
       });
     } catch (e) {
-      // ignore capture errors in debug, or log if needed
       debugPrint('capture error: $e');
     }
+  }
+
+  Future<void> _applyEraserToImage(List<Offset> points) async {
+    if (points.isEmpty) return;
+    final box = _canvasKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null) return;
+
+    final size = box.size;
+    if (size.isEmpty) return;
+
+    final pixelRatio = ui.window.devicePixelRatio;
+    final widthPx = (size.width * pixelRatio).ceil();
+    final heightPx = (size.height * pixelRatio).ceil();
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, size.width, size.height));
+
+    // draw existing image (or fill white) onto the canvas in logical pixels
+    final paint = Paint();
+    if (_cachedImage != null) {
+      final src =
+          Rect.fromLTWH(0, 0, _cachedImage!.width.toDouble(), _cachedImage!.height.toDouble());
+      final dst = Rect.fromLTWH(0, 0, size.width, size.height);
+      canvas.drawImageRect(_cachedImage!, src, dst, paint);
+    } else {
+      // empty white background
+      canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height),
+          Paint()..color = Colors.white);
+    }
+
+    // build path for eraser strokes
+    final path = Path();
+    for (var i = 0; i < points.length; i++) {
+      if (i == 0) {
+        path.moveTo(points[i].dx, points[i].dy);
+      } else {
+        path.lineTo(points[i].dx, points[i].dy);
+      }
+    }
+
+    // Erase using clear blend mode (composite onto recorded picture)
+    final eraserPaint = Paint()
+      ..blendMode = BlendMode.clear
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke
+      ..isAntiAlias = true
+      ..strokeWidth = eraserRadius * 2;
+
+    canvas.drawPath(path, eraserPaint);
+
+    final picture = recorder.endRecording();
+    final ui.Image newImage = await picture.toImage(widthPx, heightPx);
+
+    // replace cached image
+    _cachedImage?.dispose();
+    setState(() {
+      _cachedImage = newImage;
+    });
   }
 
   @override
@@ -156,7 +279,7 @@ class _NoteCanvasState extends State<NoteCanvas> {
 
   @override
   Widget build(BuildContext context) {
-    print("REBUILDING");
+    // NOTE: keep rebuilds minimal; avoid expensive prints in production
     return Center(
       key: Key('NotePage'),
       child: Column(
@@ -167,17 +290,18 @@ class _NoteCanvasState extends State<NoteCanvas> {
               boundaryMargin: const EdgeInsets.all(500),
               minScale: 0.5,
               maxScale: 2.0,
-              panEnabled: !penDown, // Disable panning while drawing
+              panEnabled: !penDown, // disable panning while drawing/erasing
               child: Center(
                 child: Listener(
                   behavior: HitTestBehavior.opaque,
                   onPointerDown: _handlePointerDown,
                   onPointerMove: _handlePointerMove,
-                  onPointerUp: (details) => _handlePointerUp(details),
+                  onPointerUp: _handlePointerUp,
+                  onPointerCancel: _handlePointerCancel,
                   child: Center(
                     child: Container(
-                      width: 600, // Fixed width for the drawing area
-                      height: 800, // Fixed height for the drawing area
+                      width: 600,
+                      height: 800,
                       decoration: BoxDecoration(
                         color: Colors.white,
                         border: Border.all(color: Colors.black, width: 1),
@@ -196,18 +320,25 @@ class _NoteCanvasState extends State<NoteCanvas> {
                         child: Stack(
                           key: Key("canvasStack"),
                           children: [
-                            // rasterized background of finished strokes
+                            // rasterized finished strokes
                             if (_cachedImage != null)
                               CustomPaint(
                                 painter: ImagePainter(image: _cachedImage!),
                                 size: Size.infinite,
                               ),
-                            // live stroke being drawn (only one list of points)
-                            CustomPaint(
-                              isComplex: true,
-                              painter: Line([currentLine], "live", penDown: penDown),
-                              size: Size.infinite,
-                            ),
+                            // live stroke being drawn (single list)
+                            if (mode == PaintMode.drawing)
+                              CustomPaint(
+                                isComplex: true,
+                                painter: Line([currentLine], "live", penDown: penDown),
+                                size: Size.infinite,
+                              ),
+                            // visual eraser overlay while erasing (not applied until pointer up)
+                            if (mode == PaintMode.erasing && eraserPoints.isNotEmpty)
+                              CustomPaint(
+                                painter: EraserPreviewPainter(eraserPoints, eraserRadius),
+                                size: Size.infinite,
+                              ),
                           ],
                         ),
                       ),
@@ -236,19 +367,23 @@ class Line extends CustomPainter {
     final paint = Paint()
       ..color = Colors.black
       ..strokeWidth = 4
-      ..strokeCap = StrokeCap.round;
+      ..strokeCap = StrokeCap.round
+      ..isAntiAlias = true;
 
     for (final line in points) {
       for (var i = 1; i < line.length; i++) {
         canvas.drawLine(line[i - 1], line[i], paint);
+      }
+      // if single point (tap) show a dot
+      if (line.length == 1) {
+        canvas.drawCircle(line.first, paint.strokeWidth / 2, paint);
       }
     }
   }
 
   @override
   bool shouldRepaint(covariant Line oldDelegate) {
-    // repaint when the live points change (or when drawing)
-    if (identical(oldDelegate.points, points) == false) return true;
+    if (!identical(oldDelegate.points, points)) return true;
     if (oldDelegate.penDown != penDown) return true;
     return false;
   }
@@ -261,13 +396,56 @@ class ImagePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Draw the image onto the canvas
-    canvas.drawImage(image, Offset.zero, Paint());
+    final dst = Rect.fromLTWH(0, 0, size.width, size.height);
+    final src = Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
+    // Draw the image to fill the canvas logical size
+    canvas.drawImageRect(image, src, dst, Paint());
   }
 
   @override
   bool shouldRepaint(covariant ImagePainter oldDelegate) {
     return oldDelegate.image != image;
+  }
+}
+
+class EraserPreviewPainter extends CustomPainter {
+  final List<Offset> points;
+  final double radius;
+
+  EraserPreviewPainter(this.points, this.radius);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.grey.withOpacity(0.5)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..isAntiAlias = true;
+
+    final fill = Paint()
+      ..color = Colors.grey.withOpacity(0.15)
+      ..style = PaintingStyle.fill
+      ..isAntiAlias = true;
+
+    // draw translucent circles along eraser points for preview
+    for (final p in points) {
+      canvas.drawCircle(p, radius, fill);
+      canvas.drawCircle(p, radius, paint);
+    }
+
+    // preview path line
+    if (points.length > 1) {
+      final path = Path()..moveTo(points.first.dx, points.first.dy);
+      for (var i = 1; i < points.length; i++) {
+        path.lineTo(points[i].dx, points[i].dy);
+      }
+      canvas.drawPath(path, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant EraserPreviewPainter oldDelegate) {
+    return oldDelegate.points != points || oldDelegate.radius != radius;
   }
 }
 
