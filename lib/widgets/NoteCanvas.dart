@@ -7,6 +7,7 @@ import 'package:flutter/scheduler.dart';
 import 'dart:math' as math;
 
 enum PaintMode { drawing, erasing }
+enum PenInputMode { stylusOnly, allowTouch }
 
 const List<Icon> paintModeIcons = [Icon(Icons.create), Icon(Icons.edit_off)];
 
@@ -27,6 +28,7 @@ class _NoteCanvasState extends State<NoteCanvas> {
   List<Offset> eraserPoints = [];
 
   PaintMode mode = PaintMode.drawing;
+  PenInputMode penInputMode = PenInputMode.stylusOnly;
   bool penDown = false;
   var eraserRadius = 20.0;
 
@@ -41,14 +43,30 @@ class _NoteCanvasState extends State<NoteCanvas> {
   // thinning threshold (in logical pixels)
   final double _thinningDistance = 2.5;
 
+  // track current interaction scale so captures are higher-res when zoomed
+  double _currentScale = 1.0;
+
+  // multiplier applied to capture pixelRatio to reduce pixelation on rasterization.
+  // Increase for crisper images at cost of memory/GPU.
+  final double _captureExtraScale = 2.0; // tweak if you want crisper or smaller images
+  final double _captureMaxMultiplier = 3.0; // cap to avoid huge captures
+
   void _setMode(PaintMode m) {
     setState(() {
       mode = m;
     });
   }
 
-  bool _isStylus(PointerEvent event) =>
-      event.kind == PointerDeviceKind.stylus;
+  void _setPenInputMode(PenInputMode p) {
+    setState(() {
+      penInputMode = p;
+    });
+  }
+
+  bool _isAllowedInput(PointerEvent event) {
+    if (penInputMode == PenInputMode.allowTouch) return true;
+    return event.kind == PointerDeviceKind.stylus;
+  }
 
   double _dist(Offset a, Offset b) => (a - b).distance;
 
@@ -63,8 +81,7 @@ class _NoteCanvasState extends State<NoteCanvas> {
   }
 
   void _handlePointerDown(PointerEvent details) {
-    // Strictly stylus-only
-    // if (!_isStylus(details)) return;
+    if (!_isAllowedInput(details)) return;
     // If another pointer is active ignore additional pointers
     if (_activePointerId != null) return;
     _activePointerId = details.pointer;
@@ -78,6 +95,7 @@ class _NoteCanvasState extends State<NoteCanvas> {
         local.dy < 0 ||
         local.dx > box.size.width ||
         local.dy > box.size.height) {
+      _clearActivePointer();
       return;
     }
 
@@ -93,8 +111,7 @@ class _NoteCanvasState extends State<NoteCanvas> {
   }
 
   void _handlePointerMove(PointerEvent details) {
-    // strictly stylus and only the active pointer
-    // if (!_isStylus(details)) return;
+    if (!_isAllowedInput(details)) return;
     if (_activePointerId == null || details.pointer != _activePointerId) return;
 
     final box = _canvasKey.currentContext?.findRenderObject() as RenderBox?;
@@ -119,11 +136,10 @@ class _NoteCanvasState extends State<NoteCanvas> {
   }
 
   Future<void> _handlePointerUp(PointerEvent details) async {
-    // strictly stylus and only the active pointer
-    // if (!_isStylus(details)) {
-    //   _clearActivePointer();
-    //   return;
-    // }
+    if (!_isAllowedInput(details)) {
+      _clearActivePointer();
+      return;
+    }
     if (_activePointerId == null || details.pointer != _activePointerId) {
       return;
     }
@@ -148,7 +164,7 @@ class _NoteCanvasState extends State<NoteCanvas> {
         penDown = false;
       });
 
-      // ensure the stroke renders, then rasterize into cached image
+      // ensure the stroke renders, then rasterize into cached image at appropriate pixel ratio
       await SchedulerBinding.instance.endOfFrame;
       await _captureCanvasAsImage();
 
@@ -199,7 +215,12 @@ class _NoteCanvasState extends State<NoteCanvas> {
           _repaintKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
       if (boundary == null) return;
 
-      final pixelRatio = ui.window.devicePixelRatio;
+      // compute capture multiplier to reduce pixelation when rasterizing
+      final requestedMultiplier =
+          math.max(1.0, _currentScale) * _captureExtraScale;
+      final captureMultiplier = math.min(_captureMaxMultiplier, requestedMultiplier);
+
+      final pixelRatio = ui.window.devicePixelRatio * captureMultiplier;
       final image = await boundary.toImage(pixelRatio: pixelRatio);
 
       // dispose previous image to free memory
@@ -221,7 +242,7 @@ class _NoteCanvasState extends State<NoteCanvas> {
     final size = box.size;
     if (size.isEmpty) return;
 
-    final pixelRatio = ui.window.devicePixelRatio;
+    final pixelRatio = ui.window.devicePixelRatio * math.max(1.0, _currentScale);
     final widthPx = (size.width * pixelRatio).ceil();
     final heightPx = (size.height * pixelRatio).ceil();
 
@@ -231,8 +252,8 @@ class _NoteCanvasState extends State<NoteCanvas> {
     // draw existing image (or fill white) onto the canvas in logical pixels
     final paint = Paint();
     if (_cachedImage != null) {
-      final src =
-          Rect.fromLTWH(0, 0, _cachedImage!.width.toDouble(), _cachedImage!.height.toDouble());
+      final src = Rect.fromLTWH(
+          0, 0, _cachedImage!.width.toDouble(), _cachedImage!.height.toDouble());
       final dst = Rect.fromLTWH(0, 0, size.width, size.height);
       canvas.drawImageRect(_cachedImage!, src, dst, paint);
     } else {
@@ -284,13 +305,30 @@ class _NoteCanvasState extends State<NoteCanvas> {
       key: Key('NotePage'),
       child: Column(
         children: [
-          PaintToolbar(setMode: _setMode, mode: mode),
+          // Pass pen mode control to toolbar
+          PaintToolbar(
+            setMode: _setMode,
+            mode: mode,
+            penInputMode: penInputMode,
+            setPenInputMode: _setPenInputMode,
+          ),
           Expanded(
             child: InteractiveViewer(
               boundaryMargin: const EdgeInsets.all(500),
               minScale: 0.5,
-              maxScale: 2.0,
+              maxScale: 3.0,
               panEnabled: !penDown, // disable panning while drawing/erasing
+              onInteractionStart: (details) {
+                // nothing special
+              },
+              onInteractionUpdate: (details) {
+                // track scale for higher-res captures to avoid pixelation when zoomed
+                _currentScale = details.scale;
+              },
+              onInteractionEnd: (details) {
+                // clamp scale to reasonable minimum
+                _currentScale = math.max(1.0, _currentScale);
+              },
               child: Center(
                 child: Listener(
                   behavior: HitTestBehavior.opaque,
@@ -333,10 +371,11 @@ class _NoteCanvasState extends State<NoteCanvas> {
                                 painter: Line([currentLine], "live", penDown: penDown),
                                 size: Size.infinite,
                               ),
-                            // visual eraser overlay while erasing (not applied until pointer up)
+                            // visual eraser overlay while erasing (real-time clear preview)
                             if (mode == PaintMode.erasing && eraserPoints.isNotEmpty)
                               CustomPaint(
-                                painter: EraserPreviewPainter(eraserPoints, eraserRadius),
+                                painter: EraserLivePreviewPainter(
+                                    eraserPoints, eraserRadius, _cachedImage),
                                 size: Size.infinite,
                               ),
                           ],
@@ -398,8 +437,11 @@ class ImagePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final dst = Rect.fromLTWH(0, 0, size.width, size.height);
     final src = Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
-    // Draw the image to fill the canvas logical size
-    canvas.drawImageRect(image, src, dst, Paint());
+    // Draw the image to fill the canvas logical size; request high filterQuality
+    final paint = Paint()
+      ..isAntiAlias = true
+      ..filterQuality = FilterQuality.high;
+    canvas.drawImageRect(image, src, dst, paint);
   }
 
   @override
@@ -408,52 +450,100 @@ class ImagePainter extends CustomPainter {
   }
 }
 
-class EraserPreviewPainter extends CustomPainter {
+/// Painter that shows live erasing by compositing the cached image into a layer,
+/// clearing the eraser path inside that layer (so erase appears immediately),
+/// and drawing an eraser preview outline above.
+class EraserLivePreviewPainter extends CustomPainter {
   final List<Offset> points;
   final double radius;
+  final ui.Image? image;
 
-  EraserPreviewPainter(this.points, this.radius);
+  EraserLivePreviewPainter(this.points, this.radius, this.image);
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.grey.withOpacity(0.5)
+    if (points.isEmpty) return;
+
+    final layerRect = Rect.fromLTWH(0, 0, size.width, size.height);
+
+    // Paint the cached image into a new layer, then clear the eraser path inside that layer.
+    canvas.saveLayer(layerRect, Paint());
+
+    // draw cached image (or white background) into the layer
+    if (image != null) {
+      final src =
+          Rect.fromLTWH(0, 0, image!.width.toDouble(), image!.height.toDouble());
+      final dst = Rect.fromLTWH(0, 0, size.width, size.height);
+      final imagePaint = Paint()..isAntiAlias = true..filterQuality = FilterQuality.high;
+      canvas.drawImageRect(image!, src, dst, imagePaint);
+    } else {
+      canvas.drawRect(layerRect, Paint()..color = Colors.white);
+    }
+
+    // clear stroke inside layer so it appears erased immediately
+    final clearPaint = Paint()
+      ..blendMode = BlendMode.clear
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = radius * 2
+      ..strokeCap = StrokeCap.round
+      ..isAntiAlias = true;
+
+    final path = Path()..moveTo(points.first.dx, points.first.dy);
+    for (var i = 1; i < points.length; i++) {
+      path.lineTo(points[i].dx, points[i].dy);
+    }
+
+    canvas.drawPath(path, clearPaint);
+
+    // restore: this composites the layer back to canvas with the cleared holes visible
+    canvas.restore();
+
+    // overlay the eraser preview UI (outline + translucent fill)
+    final previewStroke = Paint()
+      ..color = Colors.grey.withOpacity(0.45)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2
       ..isAntiAlias = true;
 
-    final fill = Paint()
-      ..color = Colors.grey.withOpacity(0.15)
+    final previewFill = Paint()
+      ..color = Colors.grey.withOpacity(0.12)
       ..style = PaintingStyle.fill
       ..isAntiAlias = true;
 
-    // draw translucent circles along eraser points for preview
     for (final p in points) {
-      canvas.drawCircle(p, radius, fill);
-      canvas.drawCircle(p, radius, paint);
+      canvas.drawCircle(p, radius, previewFill);
+      canvas.drawCircle(p, radius, previewStroke);
     }
 
-    // preview path line
     if (points.length > 1) {
-      final path = Path()..moveTo(points.first.dx, points.first.dy);
+      final pathOutline = Path()..moveTo(points.first.dx, points.first.dy);
       for (var i = 1; i < points.length; i++) {
-        path.lineTo(points[i].dx, points[i].dy);
+        pathOutline.lineTo(points[i].dx, points[i].dy);
       }
-      canvas.drawPath(path, paint);
+      canvas.drawPath(pathOutline, previewStroke);
     }
   }
 
   @override
-  bool shouldRepaint(covariant EraserPreviewPainter oldDelegate) {
-    return oldDelegate.points != points || oldDelegate.radius != radius;
+  bool shouldRepaint(covariant EraserLivePreviewPainter oldDelegate) {
+    return oldDelegate.points != points ||
+        oldDelegate.radius != radius ||
+        oldDelegate.image != image;
   }
 }
 
 class PaintToolbar extends StatefulWidget {
-  const PaintToolbar({super.key, required this.setMode, required this.mode});
+  const PaintToolbar(
+      {super.key,
+      required this.setMode,
+      required this.mode,
+      required this.penInputMode,
+      required this.setPenInputMode});
 
   final Function setMode;
   final PaintMode mode;
+  final PenInputMode penInputMode;
+  final Function setPenInputMode;
 
   @override
   State<StatefulWidget> createState() => PaintToolbarState();
@@ -462,23 +552,55 @@ class PaintToolbar extends StatefulWidget {
 class PaintToolbarState extends State<PaintToolbar> {
   @override
   Widget build(BuildContext context) {
-    return SegmentedButton<PaintMode>(
-      segments: [
-        ButtonSegment<PaintMode>(
-          value: PaintMode.drawing,
-          icon: paintModeIcons[0],
-        ),
-        ButtonSegment<PaintMode>(
-          value: PaintMode.erasing,
-          icon: paintModeIcons[1],
-        ),
-      ],
-      multiSelectionEnabled: false,
-      emptySelectionAllowed: false,
-      selected: <PaintMode>{widget.mode},
-      onSelectionChanged: (Set<PaintMode> newSelection) {
-        widget.setMode(newSelection.first);
-      },
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 8.0),
+      child: Row(
+        children: [
+          Expanded(
+            child: SegmentedButton<PaintMode>(
+              segments: [
+                ButtonSegment<PaintMode>(
+                  value: PaintMode.drawing,
+                  icon: paintModeIcons[0],
+                ),
+                ButtonSegment<PaintMode>(
+                  value: PaintMode.erasing,
+                  icon: paintModeIcons[1],
+                ),
+              ],
+              multiSelectionEnabled: false,
+              emptySelectionAllowed: false,
+              selected: <PaintMode>{widget.mode},
+              onSelectionChanged: (Set<PaintMode> newSelection) {
+                widget.setMode(newSelection.first);
+              },
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Pen input mode toggle
+          ToggleButtons(
+            isSelected: [
+              widget.penInputMode == PenInputMode.stylusOnly,
+              widget.penInputMode == PenInputMode.allowTouch
+            ],
+            onPressed: (index) {
+              final newMode =
+                  (index == 0) ? PenInputMode.stylusOnly : PenInputMode.allowTouch;
+              widget.setPenInputMode(newMode);
+            },
+            children: const [
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12),
+                child: Icon(Icons.pan_tool), // stylus / pen
+              ),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12),
+                child: Icon(Icons.touch_app), // touch allowed
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
