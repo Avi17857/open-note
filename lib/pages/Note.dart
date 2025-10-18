@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../widgets/Drawer.dart';
 import '../widgets/NoteCanvas.dart';
+import 'package:open_note/models/noteModel.dart';
 
 class Note {
   final String title;
@@ -59,9 +60,13 @@ class _NotePageState extends State<NotePage> {
           title: MyTitle(initTitle: "Untitled"),
           actions: [
             DropdownSettingsButton(),
+            // Save Button
             IconButton(
               icon: Icon(Icons.save),
-              onPressed: _saveNote, // Save note when the save button is pressed
+              onPressed: () {
+                writeNote();
+                readNote();
+              },
             ),
           ],
         ),

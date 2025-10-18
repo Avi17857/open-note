@@ -1,6 +1,7 @@
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
+
+import 'package:open_note/models/noteModel.dart';
 
 enum PaintMode { drawing, erasing }
 
@@ -15,13 +16,39 @@ class NoteCanvas extends StatefulWidget {
   }
 }
 
+
 class _NoteCanvasState extends State<NoteCanvas> {
-  List<List<Offset>> lines = [];
   List<Offset> currentLine = [];
+
+  // Future<void> loadNote() async {
+  //   try {
+      
+      
+  //   } catch (e) {
+  //     print("Error reading note: " + e.toString());
+  //   }
+  // }
+
+  // @override
+  // void initState() {
+  //   super.initState();
+
+  // }
+
+      @override
+      void initState() {
+        super.initState();
+        readNote().then((_) {
+          if (mounted) {
+            setState(() {});
+          }
+        });
+      }
+
 
   PaintMode mode = PaintMode.drawing;
   bool penDown = false;
-  var eraserRadius = 10;
+  double eraserRadius = 10.0;
 
   void _setMode(PaintMode m) {
     setState(() {
@@ -33,16 +60,50 @@ class _NoteCanvasState extends State<NoteCanvas> {
     setState(() {
       var x = details.localPosition.dx;
       var y = details.localPosition.dy;
-      if (mode == PaintMode.drawing ) { //&& details.kind == PointerDeviceKind.stylus
+      if (mode == PaintMode.drawing) {
+        //&& details.kind == PointerDeviceKind.stylus
         currentLine.add(Offset(x, y));
         penDown = true;
       }
       if (mode == PaintMode.erasing) {
-        lines.removeWhere(
-          (line) => line.any(
-            (point) => (point - details.localPosition).distance < eraserRadius,
-          ),
-        );
+        // penDown = true;
+        lines.removeWhere((line) {
+          for (int j = 0; j < line.length; j++) {
+            if (j + 1 != line.length) {
+              if (((details.localPosition >
+                          (line[j] -
+                              Offset(
+                                eraserRadius,
+                                eraserRadius,
+                              )) &&
+                      details.localPosition <
+                          (line[j + 1] +
+                              Offset(
+                                eraserRadius,
+                                eraserRadius,
+                              ))) ||
+                  (details.localPosition <
+                          (line[j] +
+                              Offset(
+                                eraserRadius,
+                                eraserRadius,
+                              )) &&
+                      details.localPosition >
+                          (line[j + 1] -
+                              Offset(
+                                eraserRadius,
+                                eraserRadius,
+                              ))))) {
+                print("DELETING LINE");
+                return true;
+              }
+            }
+            if ((line[j] - details.localPosition).distance < eraserRadius) {
+              return true;
+            }
+          }
+          return false;
+        });
       }
     });
   }
@@ -51,15 +112,48 @@ class _NoteCanvasState extends State<NoteCanvas> {
     setState(() {
       var x = details.localPosition.dx;
       var y = details.localPosition.dy;
-      if (mode == PaintMode.drawing ) { // && penDown && details.kind == PointerDeviceKind.stylus
+      if (mode == PaintMode.drawing) {
+        // && penDown && details.kind == PointerDeviceKind.stylus
         currentLine.add(Offset(x, y));
       }
       if (mode == PaintMode.erasing) {
-        lines.removeWhere(
-          (line) => line.any(
-            (point) => (point - details.localPosition).distance < eraserRadius,
-          ),
-        );
+        lines.removeWhere((line) {
+          for (int j = 0; j < line.length; j++) {
+            if (j + 1 != line.length) {
+              if (((details.localPosition >
+                          (line[j] -
+                              Offset(
+                                eraserRadius,
+                                eraserRadius,
+                              )) &&
+                      details.localPosition <
+                          (line[j + 1] +
+                              Offset(
+                                eraserRadius,
+                                eraserRadius,
+                              ))) ||
+                  (details.localPosition <
+                          (line[j] +
+                              Offset(
+                                eraserRadius,
+                                eraserRadius,
+                              )) &&
+                      details.localPosition >
+                          (line[j + 1] -
+                              Offset(
+                                eraserRadius,
+                                eraserRadius,
+                              ))))) {
+                print("DELETING LINE");
+                return true;
+              }
+            }
+            if ((line[j] - details.localPosition).distance < eraserRadius) {
+              return true;
+            }
+          }
+          return false;
+        });
       }
     });
   }
@@ -68,14 +162,17 @@ class _NoteCanvasState extends State<NoteCanvas> {
     var x = details.localPosition.dx;
     var y = details.localPosition.dy;
     setState(() {
-      if (mode == PaintMode.drawing) { // && penDown && details.kind == PointerDeviceKind.stylus
+      if (mode == PaintMode.drawing) {
+        // && penDown && details.kind == PointerDeviceKind.stylus
         currentLine.add(Offset(x, y));
-        lines = [
-          ...lines,
-          [..._compressLine(currentLine)],
-        ];
+        lines.add(_compressLine(currentLine));
+        // [
+        //   ...lines,
+        //   [..._compressLine(currentLine)],
+        // ]
         currentLine = [];
         penDown = false;
+        print("LINES LENGTH: " + lines.length.toString());
       }
     });
   }
@@ -97,7 +194,7 @@ class _NoteCanvasState extends State<NoteCanvas> {
 
   @override
   Widget build(BuildContext context) {
-    print("REBUILDING");
+    // print("REBUILDING");
     // print(lines.length);
     // print(currentLine.length);
     return Center(
@@ -128,7 +225,9 @@ class _NoteCanvasState extends State<NoteCanvas> {
               // },
               child: Center(
                 child: Listener(
-                  behavior: HitTestBehavior.opaque, // Ensure pointer events are captured
+                  behavior:
+                      HitTestBehavior
+                          .opaque, // Ensure pointer events are captured
                   onPointerDown: _handlePointerDown,
                   onPointerMove: _handlePointerMove,
                   onPointerUp: _handlePointerUp,
@@ -162,7 +261,7 @@ class _NoteCanvasState extends State<NoteCanvas> {
                         RepaintBoundary(
                           child: CustomPaint(
                             isComplex: true,
-                            painter: Line([currentLine], "2"),
+                            painter: Line([_compressLine(currentLine)], "2"),
                           ),
                         ),
                       ],
@@ -179,7 +278,7 @@ class _NoteCanvasState extends State<NoteCanvas> {
 }
 
 class Line extends CustomPainter {
-  List<List<Offset>> points;
+  List<List<Offset>>? points;
   bool penDown;
   String key;
 
@@ -192,15 +291,19 @@ class Line extends CustomPainter {
         Paint()
           ..color = Colors.black
           ..strokeWidth = 4
-          ..strokeCap = StrokeCap.round;
+          ..strokeCap = StrokeCap.round
+          ..style = PaintingStyle.stroke;
     // for (var i = 0; i < points.length - 1; i++) {
     //   canvas.drawLine(points[i], points[i + 1], paint);
     // }
     // var now = new DateTime.now();
-    for (final line in points) {
+    for (final line in (points ?? lines)) {
+      final path = Path();
       for (var i = 1; i < line.length; i++) {
-        canvas.drawLine(line[i - 1], line[i], paint);
+        path.moveTo(line[i - 1].dx, line[i - 1].dy);
+        path.lineTo(line[i].dx, line[i].dy);
       }
+      canvas.drawPath(path, paint);
       // canvas.drawPoints(PointMode.points, line, paint);
     }
     // canvas.drawPoints(PointMode.points, points, paint);
@@ -218,8 +321,9 @@ class Line extends CustomPainter {
     // // return oldDelegate.points.length != points.length;
     // print(index.toString() + " " + currentLine.toString());
     // return index == currentLine;
-    print(key + " " + penDown.toString() + " " + now.toString());
-    return penDown;
+    // print(key + " " + penDown.toString() + " " + now.toString());
+    // return penDown;
+    return true;
   }
 }
 

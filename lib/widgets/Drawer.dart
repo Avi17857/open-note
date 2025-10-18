@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import '../pages/Note.dart';
+import 'package:open_note/models/noteModel.dart';
+import 'package:open_note/pages/Note.dart';
 
 class MyDrawer extends StatefulWidget {
   const MyDrawer({super.key, required this.notes});
