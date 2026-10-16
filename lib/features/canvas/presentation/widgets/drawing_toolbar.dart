@@ -48,8 +48,8 @@ class DrawingToolbar extends StatelessWidget {
               const VerticalDivider(width: 1, indent: 8, endIndent: 8),
               const SizedBox(width: 12),
 
-              // Color Dots (hidden when eraser is active)
-              if (!controller.activeTool.isEraser) ...[
+              // Color Dots (only shown when a drawing tool is active)
+              if (controller.activeTool.isDrawingTool) ...[
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: AppColors.penPalette.map((color) {

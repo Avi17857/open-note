@@ -62,6 +62,8 @@ class CanvasController extends ChangeNotifier {
   }
 
   void onPointerDown(Offset localPosition, {PointerDeviceKind? kind}) {
+    if (_activeTool == ToolType.pan) return;
+
     // Inverted stylus tail automatically acts as an eraser
     if (kind == PointerDeviceKind.invertedStylus && !_activeTool.isEraser) {
       setTool(ToolType.strokeEraser);
@@ -77,6 +79,8 @@ class CanvasController extends ChangeNotifier {
   }
 
   void onPointerMove(Offset localPosition) {
+    if (_activeTool == ToolType.pan) return;
+
     if (_activeTool.isEraser) {
       _handleEraser(localPosition);
       return;
@@ -91,6 +95,8 @@ class CanvasController extends ChangeNotifier {
   }
 
   void onPointerUp(Offset localPosition) {
+    if (_activeTool == ToolType.pan) return;
+
     if (_activeTool.isEraser) {
       return;
     }
