@@ -1,7 +1,7 @@
 
 import 'package:flutter/material.dart';
 
-import 'package:open_note/models/noteModel.dart';
+import 'package:open_note/lib/core/models/note_model.dart';
 
 enum PaintMode { drawing, erasing }
 
