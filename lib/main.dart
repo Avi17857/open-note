@@ -1,53 +1,31 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
-import 'pages/Note.dart';
-import 'widgets/Drawer.dart';
+import 'package:open_note/core/theme/app_colors.dart';
+import 'package:open_note/features/notebook/presentation/note_screen.dart';
 
 void main() {
-  debugRepaintRainbowEnabled = true;
-  runApp(const MainApp());
+  runApp(const OpenNoteApp());
 }
 
-
-class MainApp extends StatelessWidget {
-  const MainApp({super.key});
+class OpenNoteApp extends StatelessWidget {
+  const OpenNoteApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'OpenNote',
-      home: HomePage(),
-    );
-  }
-}
-
-class HomePage extends StatelessWidget {
-  const HomePage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: const Text(
-          'OpenNote',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 28,
-            color: Colors.white,
-          ),
+      theme: ThemeData(
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: AppColors.primary,
+          primary: AppColors.primary,
         ),
-        backgroundColor: Color.fromARGB(255, 196, 20, 231),
+        appBarTheme: const AppBarTheme(
+          elevation: 2,
+          centerTitle: false,
+        ),
       ),
-      drawer: MyDrawer(
-        notes: [
-          Note(title: 'Note 1', content: 'Content 1'),
-          Note(title: 'Note 2', content: 'Content 2'),
-        ],
-      ),
-      drawerEnableOpenDragGesture: false,
-      body: Center(child: Text('Hello World!')),
+      home: const NoteScreen(),
     );
   }
 }

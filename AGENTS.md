@@ -1,0 +1,57 @@
+# OpenNote - Agent Guidelines & Architecture
+
+## Project Overview
+OpenNote is a cross-platform Flutter note-taking application designed to combine the **precision inking experience of Samsung Notes** with the **hierarchical organization of Microsoft OneNote**.
+
+- **Inking & Canvas (Samsung Notes inspiration):** Low-latency stylus and touch drawing, pressure-aware strokes, stroke/area erasers, pen tool switching, customizable colors/thickness, and lined/grid page templates.
+- **Organization (OneNote inspiration):** Hierarchical structure (Notebooks → Sections → Pages), multi-page notes, quick drawer/tab navigation, and expandable canvas.
+
+---
+
+## Architecture Principles: Feature-First Structure
+
+To avoid monolithic widgets and bloated files, the codebase follows a **Feature-First** modular structure:
+
+```
+lib/
+├── core/                     # Shared primitives, styling, utilities
+│   ├── theme/                # Colors, palette presets, typography
+│   ├── utils/                # Geometry helpers, file I/O utils
+│   └── constants/            # App-wide defaults (canvas sizes, limits)
+├── features/
+│   ├── canvas/               # Inking & drawing engine
+│   │   ├── models/           # Stroke, StrokePoint, ToolType, CanvasPage
+│   │   ├── controllers/      # CanvasController / ChangeNotifier for drawing state
+│   │   ├── presentation/     # NoteCanvas widget, CustomPainters, Toolbar
+│   │   └── services/         # Eraser collision math, smoothing algorithms
+│   ├── notebook/             # OneNote-style hierarchy & navigation
+│   │   ├── models/           # Notebook, Section, NotePage, NoteDocument
+│   │   ├── controllers/      # NotebookController (active note, page switching)
+│   │   └── presentation/     # NotebookDrawer, PageListView, SectionTabs
+│   └── storage/              # Persistence layer
+│       └── note_storage_service.dart # File saving/loading (JSON / binary)
+└── main.dart
+```
+
+---
+
+## State Management & Coding Rules
+
+1. **Decouple UI from Business & Math Logic:**
+   - Widgets (`presentation/`) should only render UI and dispatch user gestures to controllers.
+   - Eraser collision detection, stroke point smoothing, and math must live in pure Dart helper classes or services, never directly inside a widget's `setState()`.
+   - File I/O and disk persistence must live in `storage/` services, not in widget lifecycles.
+
+2. **Canvas Performance Rules:**
+   - Always wrap canvas drawing in `RepaintBoundary` to prevent full-screen repaints.
+   - Active drawing stroke (in-progress line) should be painted on an overlay painter separate from already-committed strokes to avoid redrawing all completed lines on every pointer move event.
+   - Keep `paint(Canvas canvas, Size size)` lightweight: allocate no heavy objects (Paint, Path, Rect) inside the paint loop unless strictly needed. Pre-compute styles.
+
+3. **Dart & Flutter Standards:**
+   - Use Dart 3 features (records, pattern matching, switch expressions) idiomatically.
+   - Maintain null safety without using `!` force-unwraps unless guaranteed.
+   - Keep files small and single-purpose (< 200 lines where practical).
+   - Package imports must use `package:open_note/...` without `lib/` in the path.
+
+4. **Stylus vs. Touch Discrimination:**
+   - Support `PointerDeviceKind.stylus` and `invertedStylus` (stylus eraser button/tail) with palm rejection for touch if stylus is active.
