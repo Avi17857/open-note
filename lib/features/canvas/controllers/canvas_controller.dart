@@ -29,6 +29,8 @@ class CanvasController extends ChangeNotifier {
   bool _isMultiTouch = false;
   bool _eraserPendingTouch = false;
   Offset? _eraserTouchDownPos;
+  List<Stroke>? _eraserGestureInitialStrokes;
+  bool _eraserGestureDidModify = false;
 
   /// Dedicated notifier for the single stroke in-progress to avoid repainting
   /// completed strokes during pen-move events.
@@ -66,8 +68,12 @@ class CanvasController extends ChangeNotifier {
     _activeTool = tool;
     _isDrawing = false;
     _eraserPendingTouch = false;
-    _eraserTouchDownPos = null;
-    eraserPointerNotifier.value = null;
+    if (_eraserGestureDidModify && _eraserGestureInitialStrokes != null) {
+      _recordSnapshot(_eraserGestureInitialStrokes!);
+      _redoStack.clear();
+    }
+    _eraserGestureInitialStrokes = null;
+    _eraserGestureDidModify = false;
     currentStrokeNotifier.value = [];
     notifyListeners();
   }
@@ -110,10 +116,21 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void loadStrokes(List<Stroke> newStrokes) {
-    _recordHistory();
-    _strokes = List.from(newStrokes);
+  void clearHistory() {
+    _undoStack.clear();
     _redoStack.clear();
+    notifyListeners();
+  }
+
+  void loadStrokes(List<Stroke> newStrokes, {bool clearHistory = false}) {
+    if (clearHistory) {
+      _undoStack.clear();
+      _redoStack.clear();
+    } else {
+      _recordHistory();
+      _redoStack.clear();
+    }
+    _strokes = List.from(newStrokes);
     notifyListeners();
   }
 
@@ -166,6 +183,8 @@ class CanvasController extends ChangeNotifier {
     final isBarrelButton = _isStylusButtonPressed(buttons);
     if (_activeTool.isEraser || isBarrelButton) {
       eraserPointerNotifier.value = localPosition;
+      _eraserGestureInitialStrokes = List.from(_strokes);
+      _eraserGestureDidModify = false;
       if (kind == PointerDeviceKind.touch) {
         // Defer touch erasure to move or up to prevent accidental erasure
         // when placing 2 fingers down for zoom/pan
@@ -209,6 +228,7 @@ class CanvasController extends ChangeNotifier {
         _isDrawing = false;
         currentStrokeNotifier.value = [];
       }
+      _eraserGestureInitialStrokes ??= List.from(_strokes);
       eraserPointerNotifier.value = localPosition;
       _eraserPendingTouch = false;
       _handleEraser(localPosition);
@@ -251,13 +271,25 @@ class CanvasController extends ChangeNotifier {
     _drawingPointerId = null;
 
     final isBarrelButton = _isStylusButtonPressed(buttons);
-    if (_activeTool.isEraser || isBarrelButton) {
+    final wasErasing = _eraserGestureInitialStrokes != null ||
+        _activeTool.isEraser ||
+        isBarrelButton;
+
+    if (wasErasing) {
       if (_eraserPendingTouch && _eraserTouchDownPos != null) {
         // Single tap touch erase
+        _eraserGestureInitialStrokes ??= List.from(_strokes);
         _handleEraser(_eraserTouchDownPos!);
         _eraserPendingTouch = false;
         _eraserTouchDownPos = null;
       }
+      if (_eraserGestureDidModify && _eraserGestureInitialStrokes != null) {
+        _recordSnapshot(_eraserGestureInitialStrokes!);
+        _redoStack.clear();
+        notifyListeners();
+      }
+      _eraserGestureInitialStrokes = null;
+      _eraserGestureDidModify = false;
       return;
     }
 
@@ -298,6 +330,12 @@ class CanvasController extends ChangeNotifier {
   void onPointerCancel({int pointer = 0}) {
     _activePointers.remove(pointer);
     eraserPointerNotifier.value = null;
+    if (_eraserGestureDidModify && _eraserGestureInitialStrokes != null) {
+      _recordSnapshot(_eraserGestureInitialStrokes!);
+      _redoStack.clear();
+    }
+    _eraserGestureInitialStrokes = null;
+    _eraserGestureDidModify = false;
     if (_activePointers.isEmpty) {
       _isMultiTouch = false;
     }
@@ -313,6 +351,8 @@ class CanvasController extends ChangeNotifier {
   }
 
   void _handleEraser(Offset pointer) {
+    _eraserGestureInitialStrokes ??= List.from(_strokes);
+
     if (_activeTool == ToolType.areaEraser) {
       // Area / Precision Eraser: geometric slicing of strokes
       bool modified = false;
@@ -333,9 +373,8 @@ class CanvasController extends ChangeNotifier {
       }
 
       if (modified) {
-        _recordHistory();
+        _eraserGestureDidModify = true;
         _strokes = newStrokes;
-        _redoStack.clear();
         notifyListeners();
       }
     } else {
@@ -352,15 +391,21 @@ class CanvasController extends ChangeNotifier {
       }
 
       if (strokeRemoved) {
-        _recordHistory();
+        _eraserGestureDidModify = true;
         _strokes = remaining;
-        _redoStack.clear();
         notifyListeners();
       }
     }
   }
 
   void undo() {
+    // If an in-progress eraser gesture modified strokes before pointer-up, commit snapshot first
+    if (_eraserGestureDidModify && _eraserGestureInitialStrokes != null) {
+      _recordSnapshot(_eraserGestureInitialStrokes!);
+      _redoStack.clear();
+      _eraserGestureInitialStrokes = null;
+      _eraserGestureDidModify = false;
+    }
     if (_undoStack.isEmpty) return;
     _redoStack.add(List.from(_strokes));
     _strokes = _undoStack.removeLast();
@@ -382,16 +427,21 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _recordHistory() {
-    _undoStack.add(List.from(_strokes));
+  void _recordSnapshot(List<Stroke> snapshot) {
+    _undoStack.add(List.from(snapshot));
     if (_undoStack.length > 50) {
       _undoStack.removeAt(0);
     }
   }
 
+  void _recordHistory() {
+    _recordSnapshot(_strokes);
+  }
+
   @override
   void dispose() {
     currentStrokeNotifier.dispose();
+    eraserPointerNotifier.dispose();
     super.dispose();
   }
 }

@@ -39,7 +39,7 @@ class NotebookController extends ChangeNotifier {
     _syncCurrentPageStrokes();
     _currentNote = note;
     _currentPageIndex = 0;
-    canvasController.loadStrokes(_currentNote.pages[0].strokes);
+    canvasController.loadStrokes(_currentNote.pages[0].strokes, clearHistory: true);
     notifyListeners();
   }
 
@@ -66,7 +66,7 @@ class NotebookController extends ChangeNotifier {
     );
     _currentNote.pages.add(newPage);
     _currentPageIndex = _currentNote.pages.length - 1;
-    canvasController.loadStrokes([]);
+    canvasController.loadStrokes([], clearHistory: true);
     notifyListeners();
   }
 
@@ -76,7 +76,7 @@ class NotebookController extends ChangeNotifier {
     }
     _syncCurrentPageStrokes();
     _currentPageIndex = index;
-    canvasController.loadStrokes(_currentNote.pages[index].strokes);
+    canvasController.loadStrokes(_currentNote.pages[index].strokes, clearHistory: true);
     notifyListeners();
   }
 

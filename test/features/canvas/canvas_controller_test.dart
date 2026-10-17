@@ -313,6 +313,79 @@ void main() {
       controller.redo();
       expect(controller.strokes.length, 2);
     });
+
+    test('Area eraser multi-point swipe creates only ONE undo history entry', () {
+      final stroke = Stroke(
+        points: const [
+          StrokePoint(0, 50),
+          StrokePoint(50, 50),
+          StrokePoint(100, 50),
+        ],
+        strokeWidth: 4.0,
+      );
+      controller.loadStrokes([stroke], clearHistory: true);
+      expect(controller.strokes.length, 1);
+      expect(controller.canUndo, isFalse);
+
+      controller.setTool(ToolType.areaEraser);
+      controller.setEraserRadius(10.0);
+
+      // Multi-point swipe across the stroke (simulating high sampling rate)
+      controller.onPointerDown(const Offset(40, 50));
+      controller.onPointerMove(const Offset(45, 50));
+      controller.onPointerMove(const Offset(50, 50));
+      controller.onPointerMove(const Offset(55, 50));
+      controller.onPointerMove(const Offset(60, 50));
+      controller.onPointerUp(const Offset(65, 50));
+
+      // The line was split
+      expect(controller.strokes.length, 2);
+      expect(controller.canUndo, isTrue);
+
+      // Single undo should completely revert the entire swipe gesture!
+      controller.undo();
+
+      expect(controller.strokes.length, 1);
+      expect(controller.strokes.first.points.length, 3);
+      // Ensure there are no leftover micro-undo steps
+      expect(controller.canUndo, isFalse);
+    });
+
+    test('Stylus barrel button hold-to-erase commits single undo snapshot', () {
+      final stroke = Stroke(
+        points: const [StrokePoint(0, 0), StrokePoint(100, 100)],
+        strokeWidth: 4.0,
+      );
+      controller.loadStrokes([stroke], clearHistory: true);
+      expect(controller.strokes.length, 1);
+      expect(controller.canUndo, isFalse);
+      expect(controller.activeTool, ToolType.pen);
+
+      // Drag across with barrel button pressed
+      controller.onPointerDown(
+        const Offset(10, 10),
+        kind: PointerDeviceKind.stylus,
+        buttons: kPrimaryStylusButton,
+      );
+      controller.onPointerMove(
+        const Offset(50, 50),
+        kind: PointerDeviceKind.stylus,
+        buttons: kPrimaryStylusButton,
+      );
+      // Lift stylus where buttons may be 0
+      controller.onPointerUp(
+        const Offset(50, 50),
+        kind: PointerDeviceKind.stylus,
+        buttons: 0,
+      );
+
+      expect(controller.strokes, isEmpty);
+      expect(controller.canUndo, isTrue);
+
+      controller.undo();
+      expect(controller.strokes.length, 1);
+      expect(controller.canUndo, isFalse);
+    });
   });
 
   group('EraserService Tests', () {
