@@ -6,6 +6,7 @@ import 'package:open_note/features/canvas/models/stroke_point.dart';
 import 'package:open_note/features/canvas/models/tool_type.dart';
 import 'package:open_note/features/canvas/presentation/painters/active_stroke_painter.dart';
 import 'package:open_note/features/canvas/presentation/painters/completed_strokes_painter.dart';
+import 'package:open_note/features/canvas/presentation/painters/eraser_cursor_painter.dart';
 import 'package:open_note/features/canvas/presentation/painters/page_background_painter.dart';
 import 'package:open_note/features/canvas/presentation/widgets/drawing_toolbar.dart';
 
@@ -211,6 +212,27 @@ class _NoteCanvasState extends State<NoteCanvas> {
                                             toolType:
                                                 widget.controller.activeTool,
                                           ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+
+                                  // 6. Eraser Visual Cursor (Ring under finger/stylus when erasing)
+                                  ValueListenableBuilder<Offset?>(
+                                    valueListenable:
+                                        widget.controller.eraserPointerNotifier,
+                                    builder: (context, eraserPos, _) {
+                                      if (eraserPos == null) {
+                                        return const SizedBox.shrink();
+                                      }
+                                      return CustomPaint(
+                                        painter: EraserCursorPainter(
+                                          position: eraserPos,
+                                          radius:
+                                              widget.controller.eraserRadius,
+                                          isAreaEraser: widget.controller
+                                                  .activeTool ==
+                                              ToolType.areaEraser,
                                         ),
                                       );
                                     },

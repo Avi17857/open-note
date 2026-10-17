@@ -72,17 +72,35 @@ Because all strokes remain vector objects inside `List<Stroke> _strokes`, undo a
 
 ---
 
-## 4. Eraser Collision Math
+## 4. Eraser Collision & Slicing Math
 
-To keep the eraser instant even with hundreds of strokes, [`EraserService`](file:///d:/flutter-dev/projects/open_note/lib/features/canvas/services/eraser_service.dart) uses a two-phase collision test:
+To keep the eraser instantaneous (120 FPS) even with thousands of strokes, [`EraserService`](file:///d:/flutter-dev/projects/open_note/lib/features/canvas/services/eraser_service.dart) provides two distinct modes:
 
+### 4.1 Stroke Eraser (Whole Stroke Removal)
+A boolean hit-test that deletes the entire stroke upon intersection:
 1. **Broad-Phase ($O(1)$ Rejection):**
    - Each [`Stroke`](file:///d:/flutter-dev/projects/open_note/lib/features/canvas/models/stroke.dart) lazily calculates and caches its axis-aligned bounding box `bounds`.
-   - If `stroke.bounds.inflate(eraserRadius).contains(pointer)` is false, the stroke is skipped immediately without testing coordinates.
+   - If `stroke.bounds.inflate(eraserRadius).contains(pointer)` is false, the stroke is skipped immediately without inspecting vertices.
 2. **Narrow-Phase (Line Segment Distance):**
    - Computes point-to-segment distance using vector projection:
      $$\text{projection } t = \text{clamp}\left(\frac{(P - V) \cdot (W - V)}{\|W - V\|^2}, 0, 1\right)$$
-   - If distance $\le \text{eraserRadius}$, the stroke is marked for removal.
+   - If distance $\le \text{eraserRadius}$, the stroke is marked for complete deletion.
+
+### 4.2 Area / Precision Eraser (Geometric Polyline Slicing)
+Rather than deleting whole strokes, the Area Eraser clips and subdivides strokes geometrically:
+1. **Line-Circle Parametric Intersection:**
+   Any segment $P_1 \rightarrow P_2$ is parameterized as $P(t) = P_1 + t(P_2 - P_1) = P_1 + t\vec{d}$ with $t \in [0, 1]$.
+   Equating with circle center $C$ and radius $R$:
+   $$\|(P_1 - C) + t\vec{d}\|^2 = R^2 \implies a t^2 + b t + c = 0$$
+   where $\vec{f} = P_1 - C$, $a = \vec{d} \cdot \vec{d}$, $b = 2(\vec{f} \cdot \vec{d})$, and $c = \vec{f} \cdot \vec{f} - R^2$.
+2. **Roots & Pressure Interpolation:**
+   The roots $t = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}$ yield boundary intersection points $Q$ for any $t \in [0, 1]$:
+   $$Q = P_1 + t\vec{d}, \quad \text{pressure}_Q = \text{lerp}(P_1.\text{pressure}, P_2.\text{pressure}, t)$$
+3. **Run-Length Polyline Reconstruction:**
+   - Vertices outside the circle accumulate into a `currentRun`.
+   - When entering the circle, $Q_{\text{enter}}$ is appended to `currentRun`, which is saved as a surviving `Stroke`.
+   - When exiting the circle, a new `currentRun` begins at $Q_{\text{exit}}$.
+   - Surviving sub-strokes preserve the original color, thickness, and `toolType`.
 
 ---
 

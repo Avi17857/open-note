@@ -35,6 +35,10 @@ class CanvasController extends ChangeNotifier {
   final ValueNotifier<List<StrokePoint>> currentStrokeNotifier =
       ValueNotifier<List<StrokePoint>>([]);
 
+  /// Dedicated notifier for live eraser cursor ring position.
+  final ValueNotifier<Offset?> eraserPointerNotifier =
+      ValueNotifier<Offset?>(null);
+
   final List<Color> _customColors = [];
 
   List<Stroke> get strokes => List.unmodifiable(_strokes);
@@ -63,6 +67,7 @@ class CanvasController extends ChangeNotifier {
     _isDrawing = false;
     _eraserPendingTouch = false;
     _eraserTouchDownPos = null;
+    eraserPointerNotifier.value = null;
     currentStrokeNotifier.value = [];
     notifyListeners();
   }
@@ -160,6 +165,7 @@ class CanvasController extends ChangeNotifier {
     // 4. Eraser handling
     final isBarrelButton = _isStylusButtonPressed(buttons);
     if (_activeTool.isEraser || isBarrelButton) {
+      eraserPointerNotifier.value = localPosition;
       if (kind == PointerDeviceKind.touch) {
         // Defer touch erasure to move or up to prevent accidental erasure
         // when placing 2 fingers down for zoom/pan
@@ -203,6 +209,7 @@ class CanvasController extends ChangeNotifier {
         _isDrawing = false;
         currentStrokeNotifier.value = [];
       }
+      eraserPointerNotifier.value = localPosition;
       _eraserPendingTouch = false;
       _handleEraser(localPosition);
       return;
@@ -229,6 +236,7 @@ class CanvasController extends ChangeNotifier {
     int buttons = 0,
   }) {
     _activePointers.remove(pointer);
+    eraserPointerNotifier.value = null;
 
     if (_isMultiTouch) {
       if (_activePointers.isEmpty) {
@@ -289,6 +297,7 @@ class CanvasController extends ChangeNotifier {
 
   void onPointerCancel({int pointer = 0}) {
     _activePointers.remove(pointer);
+    eraserPointerNotifier.value = null;
     if (_activePointers.isEmpty) {
       _isMultiTouch = false;
     }
@@ -304,22 +313,50 @@ class CanvasController extends ChangeNotifier {
   }
 
   void _handleEraser(Offset pointer) {
-    bool strokeRemoved = false;
-    final List<Stroke> remaining = [];
+    if (_activeTool == ToolType.areaEraser) {
+      // Area / Precision Eraser: geometric slicing of strokes
+      bool modified = false;
+      final List<Stroke> newStrokes = [];
 
-    for (final stroke in _strokes) {
-      if (EraserService.hitTestStroke(stroke, pointer, _eraserRadius)) {
-        strokeRemoved = true;
-      } else {
-        remaining.add(stroke);
+      for (final stroke in _strokes) {
+        final fragments =
+            EraserService.sliceStroke(stroke, pointer, _eraserRadius);
+        final isUnchanged =
+            fragments.length == 1 && identical(fragments.first, stroke);
+
+        if (!isUnchanged) {
+          modified = true;
+          newStrokes.addAll(fragments);
+        } else {
+          newStrokes.add(stroke);
+        }
       }
-    }
 
-    if (strokeRemoved) {
-      _recordHistory();
-      _strokes = remaining;
-      _redoStack.clear();
-      notifyListeners();
+      if (modified) {
+        _recordHistory();
+        _strokes = newStrokes;
+        _redoStack.clear();
+        notifyListeners();
+      }
+    } else {
+      // Stroke Eraser: deletes entire stroke upon intersection
+      bool strokeRemoved = false;
+      final List<Stroke> remaining = [];
+
+      for (final stroke in _strokes) {
+        if (EraserService.hitTestStroke(stroke, pointer, _eraserRadius)) {
+          strokeRemoved = true;
+        } else {
+          remaining.add(stroke);
+        }
+      }
+
+      if (strokeRemoved) {
+        _recordHistory();
+        _strokes = remaining;
+        _redoStack.clear();
+        notifyListeners();
+      }
     }
   }
 

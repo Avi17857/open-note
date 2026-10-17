@@ -32,9 +32,9 @@ OpenNote bridges the gap between the fluid inking experience of **Samsung Notes*
 ---
 
 ## Milestone 2: Eraser & Canvas Manipulation
-- [ ] **Stroke Eraser:** Tap or swipe across any stroke to delete the entire stroke.
-- [ ] **Area / Precision Eraser:** Erase only the touched segments of lines with variable eraser radius.
-- [ ] **Undo / Redo Stack:** Efficient command-pattern history stack for strokes and erasures.
+- [x] **Stroke Eraser:** Tap or swipe across any stroke to delete the entire stroke.
+- [x] **Area / Precision Eraser:** Erase only the touched segments of lines with variable eraser radius.
+- [x] **Undo / Redo Stack:** Efficient command-pattern history stack for strokes and erasures.
 - [ ] **Selection / Lasso Tool:** Select drawn strokes to move, resize, or delete.
 
 ---

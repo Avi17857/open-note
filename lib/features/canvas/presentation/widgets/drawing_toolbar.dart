@@ -3,6 +3,7 @@ import 'package:open_note/core/theme/app_colors.dart';
 import 'package:open_note/features/canvas/controllers/canvas_controller.dart';
 import 'package:open_note/features/canvas/models/tool_type.dart';
 import 'package:open_note/features/canvas/presentation/widgets/custom_color_picker_dialog.dart';
+import 'package:open_note/features/canvas/presentation/widgets/eraser_radius_picker.dart';
 import 'package:open_note/features/canvas/presentation/widgets/stroke_width_picker.dart';
 
 class DrawingToolbar extends StatelessWidget {
@@ -100,6 +101,54 @@ class DrawingToolbar extends StatelessWidget {
                             const SizedBox(width: 6),
                             Text(
                               '${controller.strokeWidth.toInt()}pt',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const Icon(Icons.arrow_drop_down, size: 18),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const VerticalDivider(width: 1, indent: 8, endIndent: 8),
+                  const SizedBox(width: 12),
+                ],
+
+                // Eraser Settings Button (only shown for eraser tools)
+                if (activeTool.isEraser) ...[
+                  Tooltip(
+                    message: 'Eraser Size & Mode',
+                    child: InkWell(
+                      onTap: () => EraserRadiusPicker.show(context, controller),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              activeTool == ToolType.areaEraser
+                                  ? Icons.cleaning_services
+                                  : Icons.auto_fix_normal,
+                              size: 16,
+                              color: activeTool == ToolType.areaEraser
+                                  ? Colors.orange.shade800
+                                  : Colors.red.shade800,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              '${controller.eraserRadius.toInt()}pt',
                               style: const TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.bold,

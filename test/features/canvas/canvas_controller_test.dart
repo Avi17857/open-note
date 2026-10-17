@@ -277,6 +277,42 @@ void main() {
       // Stroke is still completely intact!
       expect(controller.strokes.length, 1);
     });
+
+    test('Area eraser splits stroke in the middle and supports undo/redo', () {
+      final stroke = Stroke(
+        points: const [
+          StrokePoint(0, 50),
+          StrokePoint(50, 50),
+          StrokePoint(100, 50),
+        ],
+        strokeWidth: 4.0,
+      );
+      controller.loadStrokes([stroke]);
+      expect(controller.strokes.length, 1);
+
+      controller.setTool(ToolType.areaEraser);
+      controller.setEraserRadius(10.0);
+
+      // Swipe area eraser across the middle at (50, 50)
+      controller.onPointerDown(
+        const Offset(50, 50),
+        kind: PointerDeviceKind.stylus,
+      );
+
+      // The single stroke should be split into 2 surviving sub-strokes!
+      expect(controller.strokes.length, 2);
+      expect(controller.strokes.first.points.last.dx, lessThan(50.0));
+      expect(controller.strokes.last.points.first.dx, greaterThan(50.0));
+
+      // Undo restores the original single stroke
+      controller.undo();
+      expect(controller.strokes.length, 1);
+      expect(controller.strokes.first.points.length, 3);
+
+      // Redo splits it again
+      controller.redo();
+      expect(controller.strokes.length, 2);
+    });
   });
 
   group('EraserService Tests', () {
@@ -302,6 +338,87 @@ void main() {
         5.0,
       );
       expect(hit, isTrue);
+    });
+
+    test('sliceStroke splits a line into two pieces when erased in the middle', () {
+      final stroke = Stroke(
+        points: const [
+          StrokePoint(0, 0),
+          StrokePoint(100, 0),
+        ],
+      );
+
+      // Erase at center (50, 0) with radius 10
+      final fragments = EraserService.sliceStroke(
+        stroke,
+        const Offset(50, 0),
+        10.0,
+      );
+
+      expect(fragments.length, 2);
+      // Fragment 1: 0 to 40
+      expect(fragments[0].points.first.dx, 0.0);
+      expect(fragments[0].points.last.dx, closeTo(40.0, 0.01));
+
+      // Fragment 2: 60 to 100
+      expect(fragments[1].points.first.dx, closeTo(60.0, 0.01));
+      expect(fragments[1].points.last.dx, 100.0);
+    });
+
+    test('sliceStroke clips the end of a line when touched', () {
+      final stroke = Stroke(
+        points: const [
+          StrokePoint(0, 0),
+          StrokePoint(100, 0),
+        ],
+      );
+
+      // Erase at (95, 0) with radius 10 -> clips 85..100
+      final fragments = EraserService.sliceStroke(
+        stroke,
+        const Offset(95, 0),
+        10.0,
+      );
+
+      expect(fragments.length, 1);
+      expect(fragments.first.points.first.dx, 0.0);
+      expect(fragments.first.points.last.dx, closeTo(85.0, 0.01));
+    });
+
+    test('sliceStroke completely removes a stroke fully enclosed by eraser', () {
+      final stroke = Stroke(
+        points: const [
+          StrokePoint(10, 10),
+          StrokePoint(20, 20),
+        ],
+      );
+
+      // Erase at (15, 15) with huge radius 50 -> fully erased
+      final fragments = EraserService.sliceStroke(
+        stroke,
+        const Offset(15, 15),
+        50.0,
+      );
+
+      expect(fragments, isEmpty);
+    });
+
+    test('sliceStroke leaves stroke untouched when missing', () {
+      final stroke = Stroke(
+        points: const [
+          StrokePoint(0, 0),
+          StrokePoint(100, 0),
+        ],
+      );
+
+      final fragments = EraserService.sliceStroke(
+        stroke,
+        const Offset(50, 50),
+        10.0,
+      );
+
+      expect(fragments.length, 1);
+      expect(identical(fragments.first, stroke), isTrue);
     });
   });
 }
