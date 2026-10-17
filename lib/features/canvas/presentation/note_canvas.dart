@@ -103,29 +103,36 @@ class _NoteCanvasState extends State<NoteCanvas> {
                               ),
                             ],
                           ),
-                          child: Listener(
-                            behavior: HitTestBehavior.opaque,
-                            onPointerDown: (e) =>
-                                widget.controller.onPointerDown(
-                              e.localPosition,
-                              kind: e.kind,
-                              pressure: e.pressure,
-                              buttons: e.buttons,
-                            ),
-                            onPointerMove: (e) => widget.controller
-                                .onPointerMove(
-                              e.localPosition,
-                              kind: e.kind,
-                              pressure: e.pressure,
-                              buttons: e.buttons,
-                            ),
-                            onPointerUp: (e) =>
-                                widget.controller.onPointerUp(
-                              e.localPosition,
-                              kind: e.kind,
-                              pressure: e.pressure,
-                              buttons: e.buttons,
-                            ),
+                            child: Listener(
+                              behavior: HitTestBehavior.opaque,
+                              onPointerDown: (e) =>
+                                  widget.controller.onPointerDown(
+                                e.localPosition,
+                                pointer: e.pointer,
+                                kind: e.kind,
+                                pressure: e.pressure,
+                                buttons: e.buttons,
+                              ),
+                              onPointerMove: (e) => widget.controller
+                                  .onPointerMove(
+                                e.localPosition,
+                                pointer: e.pointer,
+                                kind: e.kind,
+                                pressure: e.pressure,
+                                buttons: e.buttons,
+                              ),
+                              onPointerUp: (e) =>
+                                  widget.controller.onPointerUp(
+                                e.localPosition,
+                                pointer: e.pointer,
+                                kind: e.kind,
+                                pressure: e.pressure,
+                                buttons: e.buttons,
+                              ),
+                              onPointerCancel: (e) =>
+                                  widget.controller.onPointerCancel(
+                                pointer: e.pointer,
+                              ),
                             child: ClipRect(
                               child: Stack(
                                 fit: StackFit.expand,

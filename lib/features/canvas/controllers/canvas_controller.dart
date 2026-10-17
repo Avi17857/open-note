@@ -21,9 +21,14 @@ class CanvasController extends ChangeNotifier {
   double _eraserRadius = AppConstants.defaultEraserRadius;
   bool _isDrawing = false;
 
-  // Palm Rejection State
+  // Palm Rejection & Multi-Touch State
   bool _isStylusActive = false;
   DateTime? _lastStylusTime;
+  final Set<int> _activePointers = {};
+  int? _drawingPointerId;
+  bool _isMultiTouch = false;
+  bool _eraserPendingTouch = false;
+  Offset? _eraserTouchDownPos;
 
   /// Dedicated notifier for the single stroke in-progress to avoid repainting
   /// completed strokes during pen-move events.
@@ -41,6 +46,7 @@ class CanvasController extends ChangeNotifier {
   bool get canUndo => _undoStack.isNotEmpty;
   bool get canRedo => _redoStack.isNotEmpty;
   bool get isStylusActive => _isStylusActive;
+  bool get isMultiTouch => _isMultiTouch;
 
   bool _isStylusButtonPressed(int buttons) {
     return (buttons & kPrimaryStylusButton != 0) ||
@@ -51,6 +57,10 @@ class CanvasController extends ChangeNotifier {
   void setTool(ToolType tool) {
     if (_activeTool == tool) return;
     _activeTool = tool;
+    _isDrawing = false;
+    _eraserPendingTouch = false;
+    _eraserTouchDownPos = null;
+    currentStrokeNotifier.value = [];
     notifyListeners();
   }
 
@@ -91,39 +101,67 @@ class CanvasController extends ChangeNotifier {
 
   void onPointerDown(
     Offset localPosition, {
+    int pointer = 0,
     PointerDeviceKind? kind,
     double pressure = 0.5,
     int buttons = 0,
   }) {
     if (_activeTool == ToolType.pan) return;
 
-    // Track active stylus
+    // 1. Palm Rejection: If stylus is active, ignore touch pointers before tracking them
     if (kind == PointerDeviceKind.stylus ||
         kind == PointerDeviceKind.invertedStylus) {
       _isStylusActive = true;
       _lastStylusTime = DateTime.now();
     } else if (kind == PointerDeviceKind.touch && _isStylusActive) {
-      // Palm Rejection: If stylus was used within the last 1.5s, ignore palm touches
       if (_lastStylusTime != null &&
           DateTime.now().difference(_lastStylusTime!).inMilliseconds < 1500) {
-        return;
+        return; // Reject palm touch
       } else {
         _isStylusActive = false;
       }
     }
 
-    // Inverted stylus tail automatically acts as an eraser
+    _activePointers.add(pointer);
+
+    // 2. Multi-touch rejection (Pinch-to-zoom / 2-finger pan)
+    if (_activePointers.length >= 2) {
+      _isMultiTouch = true;
+      _eraserPendingTouch = false;
+      _eraserTouchDownPos = null;
+      if (_isDrawing) {
+        _isDrawing = false;
+        currentStrokeNotifier.value = [];
+      }
+      _drawingPointerId = null;
+      return;
+    }
+
+    if (_isMultiTouch) return;
+
+    // 3. Inverted stylus tail automatically acts as an eraser
     if (kind == PointerDeviceKind.invertedStylus && !_activeTool.isEraser) {
       setTool(ToolType.strokeEraser);
     }
 
-    // S-Pen barrel button: instantly acts as an eraser while held
+    // 4. Eraser handling
     final isBarrelButton = _isStylusButtonPressed(buttons);
     if (_activeTool.isEraser || isBarrelButton) {
-      _handleEraser(localPosition);
+      if (kind == PointerDeviceKind.touch) {
+        // Defer touch erasure to move or up to prevent accidental erasure
+        // when placing 2 fingers down for zoom/pan
+        _drawingPointerId = pointer;
+        _eraserPendingTouch = true;
+        _eraserTouchDownPos = localPosition;
+      } else {
+        // Stylus or Mouse: erase immediately
+        _handleEraser(localPosition);
+      }
       return;
     }
 
+    // 5. Inking
+    _drawingPointerId = pointer;
     _isDrawing = true;
     final point = StrokePoint(
       localPosition.dx,
@@ -135,15 +173,15 @@ class CanvasController extends ChangeNotifier {
 
   void onPointerMove(
     Offset localPosition, {
+    int pointer = 0,
     PointerDeviceKind? kind,
     double pressure = 0.5,
     int buttons = 0,
   }) {
     if (_activeTool == ToolType.pan) return;
-
-    if (kind == PointerDeviceKind.touch && _isStylusActive) {
-      return; // Palm rejection
-    }
+    if (_isMultiTouch || _activePointers.length >= 2) return;
+    if (kind == PointerDeviceKind.touch && _isStylusActive) return; // Palm rejection
+    if (_drawingPointerId != null && _drawingPointerId != pointer) return;
 
     // S-Pen barrel button: instantly acts as an eraser while held
     final isBarrelButton = _isStylusButtonPressed(buttons);
@@ -152,6 +190,7 @@ class CanvasController extends ChangeNotifier {
         _isDrawing = false;
         currentStrokeNotifier.value = [];
       }
+      _eraserPendingTouch = false;
       _handleEraser(localPosition);
       return;
     }
@@ -171,18 +210,33 @@ class CanvasController extends ChangeNotifier {
 
   void onPointerUp(
     Offset localPosition, {
+    int pointer = 0,
     PointerDeviceKind? kind,
     double pressure = 0.5,
     int buttons = 0,
   }) {
-    if (_activeTool == ToolType.pan) return;
+    _activePointers.remove(pointer);
 
-    if (kind == PointerDeviceKind.touch && _isStylusActive) {
+    if (_isMultiTouch) {
+      if (_activePointers.isEmpty) {
+        _isMultiTouch = false;
+      }
       return;
     }
 
+    if (_activeTool == ToolType.pan) return;
+    if (kind == PointerDeviceKind.touch && _isStylusActive) return;
+    if (_drawingPointerId != null && _drawingPointerId != pointer) return;
+    _drawingPointerId = null;
+
     final isBarrelButton = _isStylusButtonPressed(buttons);
     if (_activeTool.isEraser || isBarrelButton) {
+      if (_eraserPendingTouch && _eraserTouchDownPos != null) {
+        // Single tap touch erase
+        _handleEraser(_eraserTouchDownPos!);
+        _eraserPendingTouch = false;
+        _eraserTouchDownPos = null;
+      }
       return;
     }
 
@@ -218,6 +272,22 @@ class CanvasController extends ChangeNotifier {
     _isDrawing = false;
     currentStrokeNotifier.value = [];
     notifyListeners();
+  }
+
+  void onPointerCancel({int pointer = 0}) {
+    _activePointers.remove(pointer);
+    if (_activePointers.isEmpty) {
+      _isMultiTouch = false;
+    }
+    if (_drawingPointerId == pointer) {
+      _drawingPointerId = null;
+      _eraserPendingTouch = false;
+      _eraserTouchDownPos = null;
+      if (_isDrawing) {
+        _isDrawing = false;
+        currentStrokeNotifier.value = [];
+      }
+    }
   }
 
   void _handleEraser(Offset pointer) {

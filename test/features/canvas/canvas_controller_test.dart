@@ -144,6 +144,125 @@ void main() {
 
       expect(controller.strokes, isEmpty);
     });
+
+    test('Multi-touch gestures cancel in-progress drawing and prevent drawing', () {
+      // Finger 1 touches down and starts drawing
+      controller.onPointerDown(
+        const Offset(10, 10),
+        pointer: 1,
+        kind: PointerDeviceKind.touch,
+      );
+      expect(controller.isDrawing, isTrue);
+      expect(controller.currentStrokeNotifier.value.isNotEmpty, isTrue);
+
+      // Finger 2 touches down (multi-touch pan / pinch)
+      controller.onPointerDown(
+        const Offset(50, 50),
+        pointer: 2,
+        kind: PointerDeviceKind.touch,
+      );
+      // Drawing should immediately be cancelled and cleared!
+      expect(controller.isDrawing, isFalse);
+      expect(controller.currentStrokeNotifier.value, isEmpty);
+      expect(controller.isMultiTouch, isTrue);
+
+      // Both fingers move (panning)
+      controller.onPointerMove(
+        const Offset(15, 15),
+        pointer: 1,
+        kind: PointerDeviceKind.touch,
+      );
+      controller.onPointerMove(
+        const Offset(55, 55),
+        pointer: 2,
+        kind: PointerDeviceKind.touch,
+      );
+      expect(controller.currentStrokeNotifier.value, isEmpty);
+
+      // Finger 1 lifts up
+      controller.onPointerUp(
+        const Offset(15, 15),
+        pointer: 1,
+        kind: PointerDeviceKind.touch,
+      );
+      expect(controller.strokes, isEmpty); // No stroke was committed
+
+      // Finger 2 lifts up
+      controller.onPointerUp(
+        const Offset(55, 55),
+        pointer: 2,
+        kind: PointerDeviceKind.touch,
+      );
+      expect(controller.strokes, isEmpty);
+      expect(controller.isMultiTouch, isFalse);
+
+      // Next single-finger stroke works normally
+      controller.onPointerDown(
+        const Offset(10, 10),
+        pointer: 3,
+        kind: PointerDeviceKind.touch,
+      );
+      controller.onPointerMove(
+        const Offset(20, 20),
+        pointer: 3,
+        kind: PointerDeviceKind.touch,
+      );
+      controller.onPointerUp(
+        const Offset(30, 30),
+        pointer: 3,
+        kind: PointerDeviceKind.touch,
+      );
+      expect(controller.strokes.length, 1);
+    });
+
+    test('Multi-touch in eraser mode does not accidentally erase strokes', () {
+      final stroke = Stroke(
+        points: const [StrokePoint(0, 0), StrokePoint(100, 100)],
+        strokeWidth: 4.0,
+      );
+      controller.loadStrokes([stroke]);
+      controller.setTool(ToolType.strokeEraser);
+
+      // Finger 1 touches down on top of the stroke
+      controller.onPointerDown(
+        const Offset(50, 50),
+        pointer: 1,
+        kind: PointerDeviceKind.touch,
+      );
+      // Stroke is NOT erased yet (deferred to avoid accidental erase before finger 2 lands)
+      expect(controller.strokes.length, 1);
+
+      // Finger 2 touches down (user is two-finger panning)
+      controller.onPointerDown(
+        const Offset(80, 80),
+        pointer: 2,
+        kind: PointerDeviceKind.touch,
+      );
+      // Both fingers move to pan
+      controller.onPointerMove(
+        const Offset(55, 55),
+        pointer: 1,
+        kind: PointerDeviceKind.touch,
+      );
+      controller.onPointerMove(
+        const Offset(85, 85),
+        pointer: 2,
+        kind: PointerDeviceKind.touch,
+      );
+      controller.onPointerUp(
+        const Offset(55, 55),
+        pointer: 1,
+        kind: PointerDeviceKind.touch,
+      );
+      controller.onPointerUp(
+        const Offset(85, 85),
+        pointer: 2,
+        kind: PointerDeviceKind.touch,
+      );
+
+      // Stroke is still completely intact!
+      expect(controller.strokes.length, 1);
+    });
   });
 
   group('EraserService Tests', () {

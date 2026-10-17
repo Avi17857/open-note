@@ -98,6 +98,12 @@ To keep the eraser instant even with hundreds of strokes, [`EraserService`](file
 3. **Pressure Sensitivity:**
    - Normalized `details.pressure` is recorded on each [`StrokePoint`](file:///d:/flutter-dev/projects/open_note/lib/features/canvas/models/stroke_point.dart).
    - Rendered with varying radius capsules for Fountain Pen calligraphic dynamics.
+4. **Multi-Touch Gesture Discrimination (Two-Finger Pan & Pinch-to-Zoom):**
+   - Active pointers are tracked via pointer IDs (`event.pointer`).
+   - If $\ge 2$ touch pointers are detected simultaneously, the system immediately recognizes a viewport manipulation gesture (pan/pinch-to-zoom).
+   - Any tentative single-touch drawing stroke in `currentStrokeNotifier` is immediately cancelled and discarded (never committed to `strokes`).
+   - In touch eraser mode, touch-down erasure is deferred so two-finger contact never accidentally deletes intersecting strokes.
+   - All drawing and eraser math remains suppressed until all fingers are lifted from the screen.
 
 ---
 
