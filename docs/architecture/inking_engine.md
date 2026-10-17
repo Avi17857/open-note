@@ -95,7 +95,22 @@ To keep the eraser instant even with hundreds of strokes, [`EraserService`](file
 
 ---
 
-## 5. Rules for Future Modifications
+## 5. Stylus Hardware Integration
+
+1. **S-Pen Barrel Button Hold-to-Erase:**
+   - Detects `kPrimaryStylusButton` and `kSecondaryButton` from `PointerEvent.buttons`.
+   - When held, the active pen temporarily acts as an eraser without mutating the selected tool in the toolbar.
+   - When released, normal inking resumes instantly.
+2. **Palm Rejection:**
+   - When `PointerDeviceKind.stylus` is detected, a 1.5s rejection window is armed.
+   - Touch events (`PointerDeviceKind.touch`) from a resting palm during this window are discarded.
+3. **Pressure Sensitivity:**
+   - Normalized `details.pressure` is recorded on each [`StrokePoint`](file:///d:/flutter-dev/projects/open_note/lib/features/canvas/models/stroke_point.dart).
+   - Rendered with varying radius capsules for Fountain Pen calligraphic dynamics.
+
+---
+
+## 6. Rules for Future Modifications
 
 1. **Never flatten or convert strokes to a bitmap image (`ui.Image`).** Maintain discrete `Stroke` data models at all times.
 2. **Never call `notifyListeners()` on pointer move.** Live coordinates must flow through `currentStrokeNotifier`.
