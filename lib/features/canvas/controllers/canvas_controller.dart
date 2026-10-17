@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:open_note/core/constants/app_constants.dart';
 import 'package:open_note/core/theme/app_colors.dart';
 import 'package:open_note/features/canvas/models/stroke.dart';
@@ -40,6 +41,12 @@ class CanvasController extends ChangeNotifier {
   bool get canUndo => _undoStack.isNotEmpty;
   bool get canRedo => _redoStack.isNotEmpty;
   bool get isStylusActive => _isStylusActive;
+
+  bool _isStylusButtonPressed(int buttons) {
+    return (buttons & kPrimaryStylusButton != 0) ||
+        (buttons & kSecondaryButton != 0) ||
+        (buttons & kSecondaryStylusButton != 0);
+  }
 
   void setTool(ToolType tool) {
     if (_activeTool == tool) return;
@@ -86,6 +93,7 @@ class CanvasController extends ChangeNotifier {
     Offset localPosition, {
     PointerDeviceKind? kind,
     double pressure = 0.5,
+    int buttons = 0,
   }) {
     if (_activeTool == ToolType.pan) return;
 
@@ -109,7 +117,9 @@ class CanvasController extends ChangeNotifier {
       setTool(ToolType.strokeEraser);
     }
 
-    if (_activeTool.isEraser) {
+    // S-Pen barrel button: instantly acts as an eraser while held
+    final isBarrelButton = _isStylusButtonPressed(buttons);
+    if (_activeTool.isEraser || isBarrelButton) {
       _handleEraser(localPosition);
       return;
     }
@@ -127,6 +137,7 @@ class CanvasController extends ChangeNotifier {
     Offset localPosition, {
     PointerDeviceKind? kind,
     double pressure = 0.5,
+    int buttons = 0,
   }) {
     if (_activeTool == ToolType.pan) return;
 
@@ -134,7 +145,13 @@ class CanvasController extends ChangeNotifier {
       return; // Palm rejection
     }
 
-    if (_activeTool.isEraser) {
+    // S-Pen barrel button: instantly acts as an eraser while held
+    final isBarrelButton = _isStylusButtonPressed(buttons);
+    if (_activeTool.isEraser || isBarrelButton) {
+      if (_isDrawing) {
+        _isDrawing = false;
+        currentStrokeNotifier.value = [];
+      }
       _handleEraser(localPosition);
       return;
     }
@@ -156,6 +173,7 @@ class CanvasController extends ChangeNotifier {
     Offset localPosition, {
     PointerDeviceKind? kind,
     double pressure = 0.5,
+    int buttons = 0,
   }) {
     if (_activeTool == ToolType.pan) return;
 
@@ -163,7 +181,8 @@ class CanvasController extends ChangeNotifier {
       return;
     }
 
-    if (_activeTool.isEraser) {
+    final isBarrelButton = _isStylusButtonPressed(buttons);
+    if (_activeTool.isEraser || isBarrelButton) {
       return;
     }
 

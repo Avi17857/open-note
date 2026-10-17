@@ -1,4 +1,4 @@
-import 'dart:ui';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:open_note/core/theme/app_colors.dart';
@@ -106,6 +106,28 @@ void main() {
       final stroke = controller.strokes.first;
       expect(stroke.toolType, ToolType.highlighter);
       expect(stroke.color.a, lessThan(1.0)); // Translucent alpha
+    });
+
+    test('Holding stylus barrel button acts as stroke eraser without changing active pen', () {
+      final stroke = Stroke(
+        points: const [StrokePoint(0, 0), StrokePoint(100, 100)],
+        strokeWidth: 4.0,
+      );
+      controller.loadStrokes([stroke]);
+      expect(controller.strokes.length, 1);
+      expect(controller.activeTool, ToolType.pen);
+
+      // Press down near the line with S-Pen button held (kPrimaryStylusButton)
+      controller.onPointerDown(
+        const Offset(51, 49),
+        kind: PointerDeviceKind.stylus,
+        buttons: kPrimaryStylusButton,
+      );
+
+      // Stroke should be erased
+      expect(controller.strokes, isEmpty);
+      // Tool should STILL be Pen (not permanently switched to eraser!)
+      expect(controller.activeTool, ToolType.pen);
     });
 
     test('Eraser hit-test removes intersected stroke', () {

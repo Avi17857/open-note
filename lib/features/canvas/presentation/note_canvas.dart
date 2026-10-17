@@ -110,18 +110,21 @@ class _NoteCanvasState extends State<NoteCanvas> {
                               e.localPosition,
                               kind: e.kind,
                               pressure: e.pressure,
+                              buttons: e.buttons,
                             ),
                             onPointerMove: (e) => widget.controller
                                 .onPointerMove(
                               e.localPosition,
                               kind: e.kind,
                               pressure: e.pressure,
+                              buttons: e.buttons,
                             ),
                             onPointerUp: (e) =>
                                 widget.controller.onPointerUp(
                               e.localPosition,
                               kind: e.kind,
                               pressure: e.pressure,
+                              buttons: e.buttons,
                             ),
                             child: ClipRect(
                               child: Stack(
