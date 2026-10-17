@@ -35,7 +35,10 @@ class CanvasController extends ChangeNotifier {
   final ValueNotifier<List<StrokePoint>> currentStrokeNotifier =
       ValueNotifier<List<StrokePoint>>([]);
 
+  final List<Color> _customColors = [];
+
   List<Stroke> get strokes => List.unmodifiable(_strokes);
+  List<Color> get customColors => List.unmodifiable(_customColors);
   ToolType get activeTool => _activeTool;
   Color get activeColor =>
       _activeTool == ToolType.highlighter ? _highlighterColor : _penColor;
@@ -66,13 +69,23 @@ class CanvasController extends ChangeNotifier {
 
   void setColor(Color color) {
     if (_activeTool == ToolType.highlighter) {
-      if (_highlighterColor == color) return;
-      _highlighterColor = color;
+      final adjusted = color.a >= 1.0 ? color.withValues(alpha: 0.38) : color;
+      if (_highlighterColor == adjusted) return;
+      _highlighterColor = adjusted;
     } else {
       if (_penColor == color) return;
       _penColor = color;
     }
     notifyListeners();
+  }
+
+  void addCustomColor(Color color) {
+    _customColors.removeWhere((c) => c.toARGB32() == color.toARGB32());
+    _customColors.insert(0, color);
+    if (_customColors.length > 5) {
+      _customColors.removeLast();
+    }
+    setColor(color);
   }
 
   void setStrokeWidth(double width) {

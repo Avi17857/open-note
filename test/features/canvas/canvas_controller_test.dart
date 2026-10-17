@@ -50,6 +50,20 @@ void main() {
       expect(controller.activeColor, Colors.blue);
     });
 
+    test('addCustomColor adds to customColors and updates activeColor', () {
+      const customTeal = Color(0xFF009688);
+      controller.addCustomColor(customTeal);
+
+      expect(controller.customColors.contains(customTeal), isTrue);
+      expect(controller.activeColor, customTeal);
+
+      // Adding another color keeps most recent first
+      const customPurple = Color(0xFF9C27B0);
+      controller.addCustomColor(customPurple);
+      expect(controller.customColors.first, customPurple);
+      expect(controller.activeColor, customPurple);
+    });
+
     test('Drawing a stroke adds to strokes and supports undo/redo', () {
       controller.onPointerDown(const Offset(10, 10));
       controller.onPointerMove(const Offset(20, 20));

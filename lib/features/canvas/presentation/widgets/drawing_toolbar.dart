@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:open_note/core/theme/app_colors.dart';
 import 'package:open_note/features/canvas/controllers/canvas_controller.dart';
 import 'package:open_note/features/canvas/models/tool_type.dart';
+import 'package:open_note/features/canvas/presentation/widgets/custom_color_picker_dialog.dart';
 import 'package:open_note/features/canvas/presentation/widgets/stroke_width_picker.dart';
 
 class DrawingToolbar extends StatelessWidget {
@@ -115,36 +116,99 @@ class DrawingToolbar extends StatelessWidget {
                   const SizedBox(width: 12),
                 ],
 
-                // Color Palette Dots (changes between pen & highlighter)
+                // Color Palette Dots & Custom Color Picker (changes between pen & highlighter)
                 if (isDrawing) ...[
                   Row(
                     mainAxisSize: MainAxisSize.min,
-                    children: currentPalette.map((color) {
-                      final isSelected = controller.activeColor == color;
-                      return GestureDetector(
-                        onTap: () => controller.setColor(color),
-                        child: Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 4.0),
-                          width: 26,
-                          height: 26,
-                          decoration: BoxDecoration(
-                            color: color,
-                            shape: activeTool == ToolType.highlighter
-                                ? BoxShape.rectangle
-                                : BoxShape.circle,
-                            borderRadius: activeTool == ToolType.highlighter
-                                ? BorderRadius.circular(4)
-                                : null,
-                            border: Border.all(
-                              color: isSelected
-                                  ? AppColors.primary
-                                  : Colors.grey.shade400,
-                              width: isSelected ? 2.5 : 1.0,
+                    children: [
+                      ...currentPalette.map((color) {
+                        final isSelected =
+                            controller.activeColor.toARGB32() == color.toARGB32();
+                        return GestureDetector(
+                          onTap: () => controller.setColor(color),
+                          child: Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 3.0),
+                            width: 26,
+                            height: 26,
+                            decoration: BoxDecoration(
+                              color: color,
+                              shape: activeTool == ToolType.highlighter
+                                  ? BoxShape.rectangle
+                                  : BoxShape.circle,
+                              borderRadius: activeTool == ToolType.highlighter
+                                  ? BorderRadius.circular(4)
+                                  : null,
+                              border: Border.all(
+                                color: isSelected
+                                    ? AppColors.primary
+                                    : Colors.grey.shade400,
+                                width: isSelected ? 2.5 : 1.0,
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
+
+                      // Custom colors chosen by user
+                      ...controller.customColors
+                          .where((c) =>
+                              !currentPalette.any((p) => p.toARGB32() == c.toARGB32()))
+                          .map((color) {
+                        final isSelected =
+                            controller.activeColor.toARGB32() == color.toARGB32();
+                        return GestureDetector(
+                          onTap: () => controller.setColor(color),
+                          child: Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 3.0),
+                            width: 26,
+                            height: 26,
+                            decoration: BoxDecoration(
+                              color: color,
+                              shape: activeTool == ToolType.highlighter
+                                  ? BoxShape.rectangle
+                                  : BoxShape.circle,
+                              borderRadius: activeTool == ToolType.highlighter
+                                  ? BorderRadius.circular(4)
+                                  : null,
+                              border: Border.all(
+                                color: isSelected
+                                    ? AppColors.primary
+                                    : Colors.grey.shade400,
+                                width: isSelected ? 2.5 : 1.0,
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
+
+                      // Custom Color Picker Button
+                      Tooltip(
+                        message: 'Custom Color',
+                        child: InkWell(
+                          onTap: () =>
+                              CustomColorPickerDialog.show(context, controller),
+                          borderRadius: BorderRadius.circular(13),
+                          child: Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 4.0),
+                            width: 26,
+                            height: 26,
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade100,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.grey.shade400,
+                                width: 1.0,
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.palette_outlined,
+                              size: 15,
+                              color: Colors.black87,
                             ),
                           ),
                         ),
-                      );
-                    }).toList(),
+                      ),
+                    ],
                   ),
                   const SizedBox(width: 12),
                   const VerticalDivider(width: 1, indent: 8, endIndent: 8),

@@ -19,12 +19,12 @@ OpenNote bridges the gap between the fluid inking experience of **Samsung Notes*
 - [x] **Dual-Layer Painter:** *(Documented in [`docs/architecture/inking_engine.md`](file:///d:/flutter-dev/projects/open_note/docs/architecture/inking_engine.md))*
   - Background layer for finished strokes (`RepaintBoundary` GPU texture cache).
   - Foreground layer for the single stroke currently being drawn (`ActiveStrokePainter` with zero pointer-lag).
-- [ ] **Pen Toolkit:**
+- [x] **Pen Toolkit:**
   - [x] Semi-transparent Highlighter with chisel square caps & auto-translucency.
   - [x] Stroke width adjustment (toolbar button, quick preset chips & fine-tuning slider).
   - [x] Tool-specific memory (independent pen vs. highlighter width and palettes).
   - [x] Pen types: Ballpoint vs. Fountain pen (pressure-based tapering).
-  - [ ] Custom hex/HSV color wheel picker.
+  - [x] Custom hex/HSV color wheel picker.
 - [x] **Stylus & Palm Rejection:**
   - [x] Differentiate `PointerDeviceKind.stylus` from touch gestures (palm rejection).
   - [x] Support stylus eraser button and inverted stylus tail.
