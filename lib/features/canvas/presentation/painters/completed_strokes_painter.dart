@@ -12,13 +12,16 @@ class CompletedStrokesPainter extends CustomPainter {
     for (final stroke in strokes) {
       if (stroke.points.isEmpty) continue;
 
+      final isHighlighter = stroke.toolType == ToolType.highlighter;
+      final paintColor = isHighlighter && stroke.color.a >= 1.0
+          ? stroke.color.withValues(alpha: 0.38)
+          : stroke.color;
+
       final paint = Paint()
-        ..color = stroke.color
+        ..color = paintColor
         ..strokeWidth = stroke.strokeWidth
-        ..strokeCap = stroke.toolType == ToolType.highlighter
-            ? StrokeCap.square
-            : StrokeCap.round
-        ..strokeJoin = StrokeJoin.round
+        ..strokeCap = isHighlighter ? StrokeCap.square : StrokeCap.round
+        ..strokeJoin = isHighlighter ? StrokeJoin.bevel : StrokeJoin.round
         ..style = PaintingStyle.stroke;
 
       if (stroke.points.length == 1) {

@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:open_note/core/constants/app_constants.dart';
+import 'package:open_note/core/theme/app_colors.dart';
 import 'package:open_note/features/canvas/models/stroke.dart';
 import 'package:open_note/features/canvas/models/tool_type.dart';
 import 'package:open_note/features/canvas/services/eraser_service.dart';
@@ -11,8 +12,10 @@ class CanvasController extends ChangeNotifier {
   final List<List<Stroke>> _redoStack = [];
 
   ToolType _activeTool = ToolType.pen;
-  Color _activeColor = Colors.black;
-  double _strokeWidth = AppConstants.defaultStrokeWidth;
+  Color _penColor = Colors.black;
+  Color _highlighterColor = AppColors.highlighterPalette.first;
+  double _penWidth = AppConstants.defaultStrokeWidth;
+  double _highlighterWidth = 22.0;
   double _eraserRadius = AppConstants.defaultEraserRadius;
   bool _isDrawing = false;
 
@@ -23,8 +26,10 @@ class CanvasController extends ChangeNotifier {
 
   List<Stroke> get strokes => List.unmodifiable(_strokes);
   ToolType get activeTool => _activeTool;
-  Color get activeColor => _activeColor;
-  double get strokeWidth => _strokeWidth;
+  Color get activeColor =>
+      _activeTool == ToolType.highlighter ? _highlighterColor : _penColor;
+  double get strokeWidth =>
+      _activeTool == ToolType.highlighter ? _highlighterWidth : _penWidth;
   double get eraserRadius => _eraserRadius;
   bool get isDrawing => _isDrawing;
   bool get canUndo => _undoStack.isNotEmpty;
@@ -37,14 +42,24 @@ class CanvasController extends ChangeNotifier {
   }
 
   void setColor(Color color) {
-    if (_activeColor == color) return;
-    _activeColor = color;
+    if (_activeTool == ToolType.highlighter) {
+      if (_highlighterColor == color) return;
+      _highlighterColor = color;
+    } else {
+      if (_penColor == color) return;
+      _penColor = color;
+    }
     notifyListeners();
   }
 
   void setStrokeWidth(double width) {
-    if (_strokeWidth == width) return;
-    _strokeWidth = width;
+    if (_activeTool == ToolType.highlighter) {
+      if (_highlighterWidth == width) return;
+      _highlighterWidth = width;
+    } else {
+      if (_penWidth == width) return;
+      _penWidth = width;
+    }
     notifyListeners();
   }
 
@@ -108,12 +123,17 @@ class CanvasController extends ChangeNotifier {
       final finalPoints = [...rawPoints, localPosition];
       final compressed = Stroke.compressPoints(finalPoints);
 
+      Color strokeColor = activeColor;
+      if (_activeTool == ToolType.highlighter && strokeColor.a >= 1.0) {
+        strokeColor = strokeColor.withValues(alpha: 0.38);
+      }
+
       _recordHistory();
       _strokes.add(
         Stroke(
           points: compressed,
-          color: _activeColor,
-          strokeWidth: _strokeWidth,
+          color: strokeColor,
+          strokeWidth: strokeWidth,
           toolType: _activeTool,
         ),
       );

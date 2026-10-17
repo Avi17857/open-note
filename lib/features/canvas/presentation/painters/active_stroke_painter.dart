@@ -18,8 +18,12 @@ class ActiveStrokePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (points.isEmpty) return;
 
+    final paintColor = toolType == ToolType.highlighter && color.a >= 1.0
+        ? color.withValues(alpha: 0.38)
+        : color;
+
     final paint = Paint()
-      ..color = color
+      ..color = paintColor
       ..strokeWidth = strokeWidth
       ..strokeCap = toolType == ToolType.highlighter
           ? StrokeCap.square
