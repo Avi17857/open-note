@@ -494,6 +494,78 @@ void main() {
       controller.undo(); // undo recolor
       expect(controller.strokes.first.color, Colors.black);
     });
+
+    test('Single tap in lasso mode selects ONLY the topmost visible stroke', () {
+      final bottomStroke = Stroke(
+        points: const [StrokePoint(50, 50), StrokePoint(150, 50)],
+        strokeWidth: 6.0,
+      );
+      final topStroke = Stroke(
+        points: const [StrokePoint(100, 20), StrokePoint(100, 120)],
+        strokeWidth: 6.0,
+      );
+      controller.loadStrokes([bottomStroke, topStroke], clearHistory: true);
+      controller.setTool(ToolType.lasso);
+
+      // Single tap directly on the intersection point (100, 50)
+      controller.onPointerDown(const Offset(100, 50));
+      controller.onPointerUp(const Offset(100, 50));
+
+      // Should select ONLY the topStroke!
+      expect(controller.hasSelection, isTrue);
+      expect(controller.selectedStrokes.length, 1);
+      expect(controller.selectedStrokes.first, topStroke);
+
+      // Single tap on empty canvas at (300, 300) deselects
+      controller.onPointerDown(const Offset(300, 300));
+      controller.onPointerUp(const Offset(300, 300));
+      expect(controller.hasSelection, isFalse);
+
+      // Single tap on the exposed section of bottomStroke (60, 50) selects bottomStroke
+      controller.onPointerDown(const Offset(60, 50));
+      controller.onPointerUp(const Offset(60, 50));
+      expect(controller.hasSelection, isTrue);
+      expect(controller.selectedStrokes.length, 1);
+      expect(controller.selectedStrokes.first, bottomStroke);
+    });
+
+    test('Duplicate places new stroke with non-overlapping smart offset', () {
+      final stroke = Stroke(
+        points: const [StrokePoint(100, 100), StrokePoint(150, 150)],
+        strokeWidth: 4.0,
+      );
+      controller.loadStrokes([stroke], clearHistory: true);
+      controller.setTool(ToolType.lasso);
+
+      // Select stroke via single tap
+      controller.onPointerDown(const Offset(125, 125));
+      controller.onPointerUp(const Offset(125, 125));
+      expect(controller.hasSelection, isTrue);
+
+      final originalBounds = controller.selectionBounds!;
+
+      // Duplicate
+      controller.duplicateSelection();
+      expect(controller.strokes.length, 2);
+      expect(controller.hasSelection, isTrue);
+
+      final duplicateBounds = controller.selectionBounds!;
+
+      // The duplicate bounds should NOT overlap the original bounds horizontally
+      expect(duplicateBounds.left, greaterThanOrEqualTo(originalBounds.right));
+
+      // Single tap on the duplicate selects ONLY the duplicate
+      final dupCenter = duplicateBounds.center;
+      controller.onPointerDown(dupCenter);
+      controller.onPointerUp(dupCenter);
+      expect(controller.selectedStrokes.first, controller.strokes.last);
+
+      // Single tap on original selects ONLY the original
+      final origCenter = originalBounds.center;
+      controller.onPointerDown(origCenter);
+      controller.onPointerUp(origCenter);
+      expect(controller.selectedStrokes.first, controller.strokes.first);
+    });
   });
 
   group('EraserService Tests', () {

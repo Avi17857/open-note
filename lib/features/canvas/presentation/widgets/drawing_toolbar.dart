@@ -217,7 +217,7 @@ class DrawingToolbar extends StatelessWidget {
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            'Circle strokes to select',
+                            'Tap or circle strokes to select',
                             style: TextStyle(
                               fontSize: 12,
                               color: Colors.blue.shade800,

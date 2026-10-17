@@ -44,6 +44,8 @@ class CanvasController extends ChangeNotifier {
   List<Stroke>? _lassoInitialSelectedStrokes;
   List<Stroke>? _lassoPreTransformAllStrokes;
   bool _lassoTransformDidModify = false;
+  Offset? _lassoTouchDownPos;
+  double _lassoDragDistance = 0.0;
 
   /// Dedicated notifier for the single stroke in-progress to avoid repainting
   /// completed strokes during pen-move events.
@@ -139,11 +141,12 @@ class CanvasController extends ChangeNotifier {
   }
 
   void duplicateSelection() {
-    if (!hasSelection) return;
+    if (!hasSelection || _selectionBounds == null) return;
     _recordHistory();
+    final offset = LassoService.computeDuplicateOffset(_selectionBounds!);
     final duplicated = LassoService.translateStrokes(
       _selectedStrokes,
-      const Offset(24, 24),
+      offset,
     );
     _strokes.addAll(duplicated);
     _selectedStrokes = duplicated;
@@ -284,6 +287,9 @@ class CanvasController extends ChangeNotifier {
     // 5. Lasso handling
     if (_activeTool == ToolType.lasso) {
       _drawingPointerId = pointer;
+      _lassoTouchDownPos = localPosition;
+      _lassoDragDistance = 0.0;
+
       if (hasSelection && _selectionBounds != null) {
         final showBelow = _selectionBounds!.top < 60;
         final topPos = showBelow
@@ -309,8 +315,6 @@ class CanvasController extends ChangeNotifier {
           _lassoPreTransformAllStrokes = List.from(_strokes);
           _lassoTransformDidModify = false;
           return;
-        } else {
-          deselect();
         }
       }
 
@@ -359,6 +363,10 @@ class CanvasController extends ChangeNotifier {
 
     // Lasso Move or Scale or Drawing loop
     if (_activeTool == ToolType.lasso) {
+      if (_lassoTouchDownPos != null) {
+        _lassoDragDistance += (localPosition - _lassoTouchDownPos!).distance;
+      }
+
       if (_activeLassoHandle != LassoHandle.none &&
           _lassoDragStartPos != null &&
           _lassoInitialBounds != null &&
@@ -483,6 +491,18 @@ class CanvasController extends ChangeNotifier {
         return;
       }
 
+      // If user tapped a handle or clicked inside selection without dragging, keep selection
+      if (_activeLassoHandle != LassoHandle.none) {
+        _lassoPreTransformAllStrokes = null;
+        _lassoInitialSelectedStrokes = null;
+        _lassoInitialBounds = null;
+        _lassoTransformDidModify = false;
+        _activeLassoHandle = LassoHandle.none;
+        _lassoTouchDownPos = null;
+        _lassoDragDistance = 0.0;
+        return;
+      }
+
       _lassoPreTransformAllStrokes = null;
       _lassoInitialSelectedStrokes = null;
       _lassoInitialBounds = null;
@@ -490,7 +510,24 @@ class CanvasController extends ChangeNotifier {
       _activeLassoHandle = LassoHandle.none;
 
       final points = lassoPointsNotifier.value;
-      if (points.length >= 3) {
+      final isTap = _lassoDragDistance < 10.0 || points.length < 3;
+
+      if (isTap && _lassoTouchDownPos != null) {
+        // --- SINGLE TAP SELECTION MODE ---
+        // Find topmost visible stroke hit by the tap (strokes behind it are ignored)
+        final tappedStroke = LassoService.findTopmostStrokeAtPoint(
+          _strokes,
+          _lassoTouchDownPos!,
+        );
+
+        if (tappedStroke != null) {
+          _selectedStrokes = [tappedStroke];
+          _selectionBounds = LassoService.computeSelectionBounds([tappedStroke]);
+        } else {
+          deselect();
+        }
+      } else if (points.length >= 3) {
+        // --- FREEFORM LASSO LOOP SELECTION ---
         final selected = LassoService.findSelectedStrokes(_strokes, points);
         if (selected.isNotEmpty) {
           _selectedStrokes = selected;
@@ -503,6 +540,8 @@ class CanvasController extends ChangeNotifier {
       }
 
       lassoPointsNotifier.value = [];
+      _lassoTouchDownPos = null;
+      _lassoDragDistance = 0.0;
       notifyListeners();
       return;
     }
@@ -560,6 +599,8 @@ class CanvasController extends ChangeNotifier {
     _lassoInitialBounds = null;
     _lassoTransformDidModify = false;
     _activeLassoHandle = LassoHandle.none;
+    _lassoTouchDownPos = null;
+    _lassoDragDistance = 0.0;
     lassoPointsNotifier.value = [];
 
     if (_activePointers.isEmpty) {

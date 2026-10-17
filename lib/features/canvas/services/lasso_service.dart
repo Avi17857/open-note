@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:open_note/features/canvas/models/stroke.dart';
+import 'package:open_note/features/canvas/services/eraser_service.dart';
 
 enum LassoHandle {
   topLeft,
@@ -263,5 +264,71 @@ class LassoService {
       case LassoHandle.none:
         return initial;
     }
+  }
+
+  /// Tests if [point] hits [stroke], either along its stroke path within [tolerance]
+  /// or inside its enclosed boundary if the stroke forms a closed shape.
+  static bool hitTestStrokePoint(
+    Stroke stroke,
+    Offset point, {
+    double tolerance = 16.0,
+  }) {
+    if (stroke.points.isEmpty) return false;
+
+    // 1. Broad-phase bounding box rejection
+    final expanded = stroke.bounds.inflate(tolerance);
+    if (!expanded.contains(point)) return false;
+
+    // 2. Stroke path distance test
+    final strokeRadius = (stroke.strokeWidth / 2.0) + tolerance;
+    if (EraserService.hitTestStroke(stroke, point, strokeRadius)) {
+      return true;
+    }
+
+    // 3. Closed shape interior test (e.g. hand-drawn circle or polygon)
+    if (stroke.points.length >= 4) {
+      final isClosed = (stroke.points.first - stroke.points.last).distance <=
+          (stroke.strokeWidth + 24.0);
+      if (isClosed && isPointInPolygon(point, stroke.points)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /// Identifies the topmost (frontmost/visible) stroke hit by [pointer].
+  /// Strokes behind the topmost hit stroke are ignored.
+  static Stroke? findTopmostStrokeAtPoint(
+    List<Stroke> strokes,
+    Offset pointer, {
+    double tolerance = 16.0,
+  }) {
+    // Iterate in reverse (from newest on top to oldest behind)
+    for (int i = strokes.length - 1; i >= 0; i--) {
+      final stroke = strokes[i];
+      if (hitTestStrokePoint(stroke, pointer, tolerance: tolerance)) {
+        return stroke;
+      }
+    }
+    return null;
+  }
+
+  /// Computes a smart non-overlapping offset for duplicated strokes.
+  static Offset computeDuplicateOffset(
+    Rect bounds, {
+    double pageWidth = 800.0,
+    double pageHeight = 1100.0,
+  }) {
+    // 1. Try side-by-side to the right with 24px gap
+    if (bounds.right + bounds.width + 24.0 <= pageWidth - 30.0) {
+      return Offset(bounds.width + 24.0, 0);
+    }
+    // 2. Try stacked below with 24px gap
+    if (bounds.bottom + bounds.height + 24.0 <= pageHeight - 50.0) {
+      return Offset(0, bounds.height + 24.0);
+    }
+    // 3. Fallback to a clear diagonal offset
+    return const Offset(45.0, 45.0);
   }
 }

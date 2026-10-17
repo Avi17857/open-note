@@ -172,5 +172,82 @@ void main() {
         LassoHandle.none,
       );
     });
+
+    test('findTopmostStrokeAtPoint selects topmost visible stroke among overlapping strokes', () {
+      final bottomStroke = Stroke(
+        points: const [StrokePoint(50, 50), StrokePoint(150, 50)],
+        strokeWidth: 6.0,
+      );
+      final topStroke = Stroke(
+        points: const [StrokePoint(100, 20), StrokePoint(100, 120)],
+        strokeWidth: 6.0,
+      );
+
+      final strokes = [bottomStroke, topStroke];
+
+      // Tap on the intersection (100, 50): should select topStroke!
+      final hitAtIntersection = LassoService.findTopmostStrokeAtPoint(
+        strokes,
+        const Offset(100, 50),
+      );
+      expect(hitAtIntersection, topStroke);
+
+      // Tap on the exposed left wing of bottomStroke (60, 50): should select bottomStroke!
+      final hitAtExposed = LassoService.findTopmostStrokeAtPoint(
+        strokes,
+        const Offset(60, 50),
+      );
+      expect(hitAtExposed, bottomStroke);
+
+      // Tap away at (300, 300): returns null
+      final hitMiss = LassoService.findTopmostStrokeAtPoint(
+        strokes,
+        const Offset(300, 300),
+      );
+      expect(hitMiss, isNull);
+    });
+
+    test('findTopmostStrokeAtPoint detects tap inside closed hand-drawn shape', () {
+      final closedBox = Stroke(
+        points: const [
+          StrokePoint(100, 100),
+          StrokePoint(200, 100),
+          StrokePoint(200, 200),
+          StrokePoint(100, 200),
+          StrokePoint(102, 101), // Closed loop back near start
+        ],
+        strokeWidth: 4.0,
+      );
+
+      // Tap inside the center of the box at (150, 150)
+      final hitInside = LassoService.findTopmostStrokeAtPoint(
+        [closedBox],
+        const Offset(150, 150),
+      );
+      expect(hitInside, closedBox);
+    });
+
+    test('computeDuplicateOffset produces non-overlapping placement', () {
+      const bounds = Rect.fromLTWH(50, 50, 100, 80);
+
+      // When room to the right, places side-by-side
+      final sideBySide = LassoService.computeDuplicateOffset(
+        bounds,
+        pageWidth: 800,
+        pageHeight: 1100,
+      );
+      expect(sideBySide.dx, bounds.width + 24.0);
+      expect(sideBySide.dy, 0.0);
+
+      // When near right edge, stacks below
+      const rightEdgeBounds = Rect.fromLTWH(700, 50, 100, 80);
+      final stackedBelow = LassoService.computeDuplicateOffset(
+        rightEdgeBounds,
+        pageWidth: 800,
+        pageHeight: 1100,
+      );
+      expect(stackedBelow.dx, 0.0);
+      expect(stackedBelow.dy, rightEdgeBounds.height + 24.0);
+    });
   });
 }
