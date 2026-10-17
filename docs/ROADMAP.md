@@ -35,7 +35,7 @@ OpenNote bridges the gap between the fluid inking experience of **Samsung Notes*
 - [x] **Stroke Eraser:** Tap or swipe across any stroke to delete the entire stroke.
 - [x] **Area / Precision Eraser:** Erase only the touched segments of lines with variable eraser radius.
 - [x] **Undo / Redo Stack:** Efficient command-pattern history stack for strokes and erasures.
-- [x] **Selection / Lasso Tool:** Select drawn strokes to move, resize, or delete.
+- [x] **Selection / Lasso Tool:** Freeform lasso and single-tap selection with bounding box, move, 4 corner resize handles, freeform rotation handle (with tactile 15° angle snapping), 90° quick rotate, smart duplicate offset, recoloring, deletion, and full undo/redo history.
 
 ---
 

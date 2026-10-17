@@ -9,6 +9,7 @@ import 'package:open_note/features/canvas/models/stroke_point.dart';
 import 'package:open_note/features/canvas/models/tool_type.dart';
 import 'package:open_note/features/canvas/presentation/widgets/selection_toolbar.dart';
 import 'package:open_note/features/canvas/services/eraser_service.dart';
+import 'package:open_note/features/canvas/services/lasso_service.dart';
 
 void main() {
   group('CanvasController Tests', () {
@@ -647,9 +648,91 @@ void main() {
       expect(controller.strokes.length, 1);
       expect(controller.strokes.first, backgroundStroke);
     });
+
+    test('rotateSelection90 rotates selected strokes 90 degrees with undo and redo', () {
+      final verticalLine = Stroke(
+        points: const [
+          StrokePoint(100, 50),
+          StrokePoint(100, 150),
+        ],
+        strokeWidth: 4.0,
+      );
+      controller.loadStrokes([verticalLine], clearHistory: true);
+      controller.setTool(ToolType.lasso);
+
+      // Select line via tap
+      controller.onPointerDown(const Offset(100, 100));
+      controller.onPointerUp(const Offset(100, 100));
+      expect(controller.hasSelection, isTrue);
+
+      final origFirstPoint = controller.selectedStrokes.first.points.first;
+      expect(origFirstPoint.dx, 100.0);
+      expect(origFirstPoint.dy, 50.0);
+
+      // Rotate 90 degrees clockwise around center (100, 100)
+      controller.rotateSelection90(clockwise: true);
+
+      // (100, 50) rotated 90 deg clockwise around (100, 100) -> (150, 100)
+      // (100, 150) rotated 90 deg clockwise around (100, 100) -> (50, 100)
+      final rotatedStroke = controller.selectedStrokes.first;
+      expect(rotatedStroke.points.first.dx, closeTo(150.0, 0.01));
+      expect(rotatedStroke.points.first.dy, closeTo(100.0, 0.01));
+      expect(rotatedStroke.points.last.dx, closeTo(50.0, 0.01));
+      expect(rotatedStroke.points.last.dy, closeTo(100.0, 0.01));
+      expect(controller.canUndo, isTrue);
+
+      // Undo restores vertical orientation
+      controller.undo();
+      expect(controller.strokes.first.points.first.dx, closeTo(100.0, 0.01));
+      expect(controller.strokes.first.points.first.dy, closeTo(50.0, 0.01));
+
+      // Redo restores rotated horizontal orientation
+      controller.redo();
+      expect(controller.strokes.first.points.first.dx, closeTo(150.0, 0.01));
+      expect(controller.strokes.first.points.first.dy, closeTo(100.0, 0.01));
+    });
+
+    test('Dragging rotation handle rotates strokes interactively and commits undo history', () {
+      final verticalLine = Stroke(
+        points: const [
+          StrokePoint(100, 50),
+          StrokePoint(100, 150),
+        ],
+        strokeWidth: 4.0,
+      );
+      controller.loadStrokes([verticalLine], clearHistory: true);
+      controller.setTool(ToolType.lasso);
+
+      // Select line via tap
+      controller.onPointerDown(const Offset(100, 100));
+      controller.onPointerUp(const Offset(100, 100));
+      expect(controller.hasSelection, isTrue);
+
+      final bounds = controller.selectionBounds!;
+      final rotateHandlePos = LassoService.getRotationHandlePosition(bounds);
+
+      // Drag rotation knob from (center.dx, bounds.top - 26) to the right (90 degree turn)
+      controller.onPointerDown(rotateHandlePos);
+
+      // Center is (100, 100). Top handle is at (100, 42 - 26 = 16) -> angle is -pi/2 (-90 deg)
+      // Dragging to (184, 100) -> angle is 0 deg (relative delta +90 deg clockwise)
+      controller.onPointerMove(const Offset(184, 100));
+      controller.onPointerUp(const Offset(184, 100));
+
+      // Points should now be rotated by ~90 degrees
+      expect(controller.selectedStrokes.first.points.first.dx, closeTo(150.0, 1.0));
+      expect(controller.selectedStrokes.first.points.first.dy, closeTo(100.0, 1.0));
+      expect(controller.canUndo, isTrue);
+
+      // Undo restores original orientation
+      controller.undo();
+      expect(controller.strokes.first.points.first.dx, closeTo(100.0, 0.01));
+      expect(controller.strokes.first.points.first.dy, closeTo(50.0, 0.01));
+    });
   });
 
   group('EraserService Tests', () {
+
     test('Broad phase rejects points far away', () {
       final stroke = Stroke(
         points: const [StrokePoint(0, 0), StrokePoint(10, 10)],

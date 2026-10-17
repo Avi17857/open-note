@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:open_note/features/canvas/services/lasso_service.dart';
 
 /// Paints the dashed bounding box and 4 corner resize handles around selected strokes.
 class SelectionPainter extends CustomPainter {
@@ -29,6 +30,49 @@ class SelectionPainter extends CustomPainter {
     _drawHandle(canvas, bounds.topRight);
     _drawHandle(canvas, bounds.bottomLeft);
     _drawHandle(canvas, bounds.bottomRight);
+
+    // 4. Rotation stem and handle
+    _drawRotationHandle(canvas, bounds, borderPaint);
+  }
+
+  void _drawRotationHandle(Canvas canvas, Rect bounds, Paint borderPaint) {
+    final topCenter = bounds.topCenter;
+    final handlePos = LassoService.getRotationHandlePosition(bounds);
+
+    // Stem line connecting box to rotation knob
+    final stemPaint = Paint()
+      ..color = const Color(0xFF007AFF)
+      ..strokeWidth = 1.5;
+    canvas.drawLine(topCenter, handlePos, stemPaint);
+
+    // Subtle drop shadow
+    final shadowPaint = Paint()
+      ..color = const Color(0x33000000)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.0);
+    canvas.drawCircle(handlePos.translate(0, 1), 8.5, shadowPaint);
+
+    // White circular fill
+    final fillPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(handlePos, 8.5, fillPaint);
+
+    // Blue ring border
+    canvas.drawCircle(handlePos, 8.5, borderPaint);
+
+    // Curving rotate arrow glyph
+    final arcPaint = Paint()
+      ..color = const Color(0xFF007AFF)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8
+      ..strokeCap = StrokeCap.round;
+    canvas.drawArc(
+      Rect.fromCircle(center: handlePos, radius: 4.5),
+      -0.6,
+      4.4,
+      false,
+      arcPaint,
+    );
   }
 
   void _drawHandle(Canvas canvas, Offset center) {

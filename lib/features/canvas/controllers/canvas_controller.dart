@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
@@ -48,6 +49,8 @@ class CanvasController extends ChangeNotifier {
   Offset? _lassoTouchDownPos;
   double _lassoDragDistance = 0.0;
   bool _pointerDownOnToolbar = false;
+  Offset? _lassoRotationCenter;
+  double? _lassoRotationStartAngle;
 
   /// Dedicated notifier for the single stroke in-progress to avoid repainting
   /// completed strokes during pen-move events.
@@ -126,6 +129,8 @@ class CanvasController extends ChangeNotifier {
     _lassoInitialSelectedStrokes = null;
     _lassoPreTransformAllStrokes = null;
     _lassoTransformDidModify = false;
+    _lassoRotationCenter = null;
+    _lassoRotationStartAngle = null;
     lassoPointsNotifier.value = [];
     notifyListeners();
   }
@@ -157,6 +162,33 @@ class CanvasController extends ChangeNotifier {
     _strokes = [..._strokes, ...duplicated];
     _selectedStrokes = duplicated;
     _selectionBounds = LassoService.computeSelectionBounds(duplicated);
+    _redoStack.clear();
+    notifyListeners();
+  }
+
+  void rotateSelection90({bool clockwise = true}) {
+    if (!hasSelection || _selectionBounds == null) return;
+    _recordHistory();
+    final angle = clockwise ? (pi / 2) : (-pi / 2);
+    final center = _selectionBounds!.center;
+    final rotated = LassoService.rotateStrokes(
+      _selectedStrokes,
+      center,
+      angle,
+    );
+    final oldSelectedSet = _selectedStrokes.toSet();
+    final List<Stroke> newStrokes = [];
+    int selIdx = 0;
+    for (final s in _strokes) {
+      if (oldSelectedSet.contains(s)) {
+        newStrokes.add(rotated[selIdx++]);
+      } else {
+        newStrokes.add(s);
+      }
+    }
+    _strokes = newStrokes;
+    _selectedStrokes = rotated;
+    _selectionBounds = LassoService.computeSelectionBounds(rotated);
     _redoStack.clear();
     notifyListeners();
   }
@@ -322,12 +354,25 @@ class CanvasController extends ChangeNotifier {
           _lassoInitialSelectedStrokes = List.from(_selectedStrokes);
           _lassoPreTransformAllStrokes = List.from(_strokes);
           _lassoTransformDidModify = false;
+          if (handle == LassoHandle.rotate) {
+            final center = _selectionBounds!.center;
+            _lassoRotationCenter = center;
+            _lassoRotationStartAngle = atan2(
+              localPosition.dy - center.dy,
+              localPosition.dx - center.dx,
+            );
+          } else {
+            _lassoRotationCenter = null;
+            _lassoRotationStartAngle = null;
+          }
           return;
         }
       }
 
       _activeLassoHandle = LassoHandle.none;
       _lassoDragStartPos = null;
+      _lassoRotationCenter = null;
+      _lassoRotationStartAngle = null;
       lassoPointsNotifier.value = [localPosition];
       return;
     }
@@ -385,7 +430,35 @@ class CanvasController extends ChangeNotifier {
         late final Rect updatedBounds;
         late final List<Stroke> updatedSelected;
 
-        if (_activeLassoHandle == LassoHandle.move) {
+        if (_activeLassoHandle == LassoHandle.rotate &&
+            _lassoRotationCenter != null &&
+            _lassoRotationStartAngle != null) {
+          _lassoTransformDidModify = true;
+          final currentAngle = atan2(
+            localPosition.dy - _lassoRotationCenter!.dy,
+            localPosition.dx - _lassoRotationCenter!.dx,
+          );
+          var angleDelta = currentAngle - _lassoRotationStartAngle!;
+
+          // Angle snapping: snap to 15-degree increments if within 3.5 degrees
+          const snapThreshold = 3.5 * pi / 180.0;
+          const snapStep = 15.0 * pi / 180.0;
+          final remainder = angleDelta % snapStep;
+          if (remainder < snapThreshold) {
+            angleDelta -= remainder;
+          } else if (snapStep - remainder < snapThreshold) {
+            angleDelta += (snapStep - remainder);
+          }
+
+          updatedSelected = LassoService.rotateStrokes(
+            _lassoInitialSelectedStrokes!,
+            _lassoRotationCenter!,
+            angleDelta,
+          );
+          updatedBounds =
+              LassoService.computeSelectionBounds(updatedSelected) ??
+                  _lassoInitialBounds!;
+        } else if (_activeLassoHandle == LassoHandle.move) {
           updatedBounds = _lassoInitialBounds!.shift(delta);
           updatedSelected = LassoService.translateStrokes(
             _lassoInitialSelectedStrokes!,
@@ -501,6 +574,8 @@ class CanvasController extends ChangeNotifier {
         _lassoInitialSelectedStrokes = null;
         _lassoInitialBounds = null;
         _lassoTransformDidModify = false;
+        _lassoRotationCenter = null;
+        _lassoRotationStartAngle = null;
         _activeLassoHandle = LassoHandle.none;
         notifyListeners();
         return;
@@ -512,6 +587,8 @@ class CanvasController extends ChangeNotifier {
         _lassoInitialSelectedStrokes = null;
         _lassoInitialBounds = null;
         _lassoTransformDidModify = false;
+        _lassoRotationCenter = null;
+        _lassoRotationStartAngle = null;
         _activeLassoHandle = LassoHandle.none;
         _lassoTouchDownPos = null;
         _lassoDragDistance = 0.0;
@@ -522,6 +599,8 @@ class CanvasController extends ChangeNotifier {
       _lassoInitialSelectedStrokes = null;
       _lassoInitialBounds = null;
       _lassoTransformDidModify = false;
+      _lassoRotationCenter = null;
+      _lassoRotationStartAngle = null;
       _activeLassoHandle = LassoHandle.none;
 
       final points = lassoPointsNotifier.value;

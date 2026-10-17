@@ -8,6 +8,7 @@ enum LassoHandle {
   topRight,
   bottomLeft,
   bottomRight,
+  rotate,
   move,
   none,
 }
@@ -201,12 +202,50 @@ class LassoService {
     }).toList();
   }
 
+  /// Computes the position of the rotation handle extending above [bounds].
+  static Offset getRotationHandlePosition(
+    Rect bounds, {
+    double stemLength = 26.0,
+  }) {
+    return Offset(bounds.center.dx, bounds.top - stemLength);
+  }
+
+  /// Rotates [strokes] around [pivot] by [radians].
+  static List<Stroke> rotateStrokes(
+    List<Stroke> strokes,
+    Offset pivot,
+    double radians,
+  ) {
+    if (radians == 0.0 || strokes.isEmpty) return strokes;
+
+    final cosA = cos(radians);
+    final sinA = sin(radians);
+
+    return strokes.map((stroke) {
+      final rotatedPoints = stroke.points.map((p) {
+        final rx = p.dx - pivot.dx;
+        final ry = p.dy - pivot.dy;
+        return p.copyWith(
+          dx: pivot.dx + (rx * cosA - ry * sinA),
+          dy: pivot.dy + (rx * sinA + ry * cosA),
+        );
+      }).toList();
+      return stroke.copyWith(points: rotatedPoints);
+    }).toList();
+  }
+
   /// Tests which handle of [bounds] was hit by [pointer], if any.
   static LassoHandle hitTestHandle(
     Offset pointer,
     Rect bounds, {
     double handleRadius = 24.0,
   }) {
+    // 1. Rotation knob extending above topCenter
+    final rotateHandlePos = getRotationHandlePosition(bounds);
+    if ((pointer - rotateHandlePos).distance <= handleRadius) {
+      return LassoHandle.rotate;
+    }
+
     final effectiveRadius = min(
       handleRadius,
       max(14.0, min(bounds.width, bounds.height) / 2.0),
@@ -263,6 +302,7 @@ class LassoService {
       case LassoHandle.move:
         return initial.shift(delta);
 
+      case LassoHandle.rotate:
       case LassoHandle.none:
         return initial;
     }

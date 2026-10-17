@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:open_note/features/canvas/models/stroke.dart';
@@ -268,5 +269,71 @@ void main() {
       expect(vertOffset.dx, greaterThanOrEqualTo(28.0));
       expect(vertOffset.dy, 0.0);
     });
+
+    test('rotateStrokes correctly rotates stroke points around pivot', () {
+      final stroke = Stroke(
+        points: const [
+          StrokePoint(100, 50),
+          StrokePoint(100, 150),
+        ],
+        strokeWidth: 4.0,
+      );
+
+      // Rotate 90 degrees (pi / 2) clockwise around pivot (100, 100)
+      // (100, 50) -> relative (0, -50) -> rotated (50, 0) -> (150, 100)
+      // (100, 150) -> relative (0, 50) -> rotated (-50, 0) -> (50, 100)
+      final rotated = LassoService.rotateStrokes(
+        [stroke],
+        const Offset(100, 100),
+        pi / 2,
+      );
+
+      expect(rotated.length, 1);
+      expect(rotated.first.points.first.dx, closeTo(150.0, 0.01));
+      expect(rotated.first.points.first.dy, closeTo(100.0, 0.01));
+      expect(rotated.first.points.last.dx, closeTo(50.0, 0.01));
+      expect(rotated.first.points.last.dy, closeTo(100.0, 0.01));
+
+      // Rotating by 0 radians returns the original list
+      final unrotated = LassoService.rotateStrokes(
+        [stroke],
+        const Offset(100, 100),
+        0.0,
+      );
+      expect(identical(unrotated, [stroke]), isFalse);
+      expect(unrotated.first.points.first.dx, 100.0);
+      expect(unrotated.first.points.first.dy, 50.0);
+    });
+
+    test('getRotationHandlePosition places stem above bounds center', () {
+      const bounds = Rect.fromLTWH(100, 100, 200, 150);
+      final handlePos = LassoService.getRotationHandlePosition(bounds, stemLength: 26.0);
+      expect(handlePos.dx, 200.0); // Center X = 100 + 100
+      expect(handlePos.dy, 100.0 - 26.0); // Top - stemLength = 74.0
+    });
+
+    test('hitTestHandle detects LassoHandle.rotate', () {
+      const bounds = Rect.fromLTWH(100, 100, 200, 150);
+      final rotatePos = LassoService.getRotationHandlePosition(bounds);
+
+      // Hit directly on rotation knob
+      final hit = LassoService.hitTestHandle(rotatePos, bounds);
+      expect(hit, LassoHandle.rotate);
+
+      // Hit within touch radius of rotation knob
+      final hitNear = LassoService.hitTestHandle(rotatePos.translate(5, -5), bounds);
+      expect(hitNear, LassoHandle.rotate);
+    });
+
+    test('calculateTransformedBounds preserves bounds on rotate handle', () {
+      const initial = Rect.fromLTWH(50, 50, 100, 100);
+      final result = LassoService.calculateTransformedBounds(
+        initial,
+        LassoHandle.rotate,
+        const Offset(25, 25),
+      );
+      expect(result, initial);
+    });
   });
 }
+
