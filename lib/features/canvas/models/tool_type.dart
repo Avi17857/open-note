@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 enum ToolType {
   pen,
+  fountainPen,
   highlighter,
   strokeEraser,
   areaEraser,
@@ -11,7 +12,8 @@ enum ToolType {
 extension ToolTypeExtension on ToolType {
   String get label {
     return switch (this) {
-      ToolType.pen => 'Pen',
+      ToolType.pen => 'Ballpoint',
+      ToolType.fountainPen => 'Fountain Pen',
       ToolType.highlighter => 'Highlighter',
       ToolType.strokeEraser => 'Stroke Eraser',
       ToolType.areaEraser => 'Area Eraser',
@@ -22,6 +24,7 @@ extension ToolTypeExtension on ToolType {
   IconData get icon {
     return switch (this) {
       ToolType.pen => Icons.edit,
+      ToolType.fountainPen => Icons.draw,
       ToolType.highlighter => Icons.brush,
       ToolType.strokeEraser => Icons.auto_fix_normal,
       ToolType.areaEraser => Icons.cleaning_services,
@@ -33,5 +36,7 @@ extension ToolTypeExtension on ToolType {
       this == ToolType.strokeEraser || this == ToolType.areaEraser;
 
   bool get isDrawingTool =>
-      this == ToolType.pen || this == ToolType.highlighter;
+      this == ToolType.pen ||
+      this == ToolType.fountainPen ||
+      this == ToolType.highlighter;
 }

@@ -1,8 +1,10 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:open_note/core/theme/app_colors.dart';
 import 'package:open_note/features/canvas/controllers/canvas_controller.dart';
 import 'package:open_note/features/canvas/models/stroke.dart';
+import 'package:open_note/features/canvas/models/stroke_point.dart';
 import 'package:open_note/features/canvas/models/tool_type.dart';
 import 'package:open_note/features/canvas/services/eraser_service.dart';
 
@@ -64,6 +66,36 @@ void main() {
       expect(controller.strokes.length, 1);
     });
 
+    test('Drawing with fountain pen records pressure dynamics', () {
+      controller.setTool(ToolType.fountainPen);
+      controller.onPointerDown(const Offset(10, 10), pressure: 0.3);
+      controller.onPointerMove(const Offset(20, 20), pressure: 0.9);
+      controller.onPointerUp(const Offset(30, 30), pressure: 0.6);
+
+      expect(controller.strokes.length, 1);
+      final stroke = controller.strokes.first;
+      expect(stroke.toolType, ToolType.fountainPen);
+      expect(stroke.points.any((p) => p.pressure > 0.5), isTrue);
+    });
+
+    test('Palm rejection ignores touch events while stylus is active', () {
+      // Stylus begins drawing
+      controller.onPointerDown(
+        const Offset(10, 10),
+        kind: PointerDeviceKind.stylus,
+      );
+      expect(controller.isStylusActive, isTrue);
+      expect(controller.isDrawing, isTrue);
+
+      // Palm touches screen: should be rejected
+      controller.onPointerDown(
+        const Offset(200, 200),
+        kind: PointerDeviceKind.touch,
+      );
+      // Drawing stroke should still be at original point, not jumped to palm
+      expect(controller.currentStrokeNotifier.value.first.dx, 10.0);
+    });
+
     test('Drawing with highlighter creates stroke with translucency', () {
       controller.setTool(ToolType.highlighter);
       controller.onPointerDown(const Offset(10, 10));
@@ -78,7 +110,7 @@ void main() {
 
     test('Eraser hit-test removes intersected stroke', () {
       final stroke = Stroke(
-        points: const [Offset(0, 0), Offset(100, 100)],
+        points: const [StrokePoint(0, 0), StrokePoint(100, 100)],
         strokeWidth: 4.0,
       );
       controller.loadStrokes([stroke]);
@@ -95,7 +127,7 @@ void main() {
   group('EraserService Tests', () {
     test('Broad phase rejects points far away', () {
       final stroke = Stroke(
-        points: const [Offset(0, 0), Offset(10, 10)],
+        points: const [StrokePoint(0, 0), StrokePoint(10, 10)],
       );
       final hit = EraserService.hitTestStroke(
         stroke,
@@ -107,7 +139,7 @@ void main() {
 
     test('Narrow phase hits point on line segment', () {
       final stroke = Stroke(
-        points: const [Offset(0, 0), Offset(0, 100)],
+        points: const [StrokePoint(0, 0), StrokePoint(0, 100)],
       );
       final hit = EraserService.hitTestStroke(
         stroke,

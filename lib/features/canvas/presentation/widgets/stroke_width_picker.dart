@@ -14,9 +14,11 @@ class StrokeWidthPicker extends StatelessWidget {
       builder: (ctx) => AlertDialog(
         contentPadding: const EdgeInsets.all(20),
         title: Text(
-          controller.activeTool == ToolType.highlighter
-              ? 'Highlighter Width'
-              : 'Pen Width',
+          switch (controller.activeTool) {
+            ToolType.highlighter => 'Highlighter Width',
+            ToolType.fountainPen => 'Fountain Pen Width',
+            _ => 'Pen Width',
+          },
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
         content: SizedBox(

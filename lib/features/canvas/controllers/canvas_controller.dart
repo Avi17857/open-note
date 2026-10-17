@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:open_note/core/constants/app_constants.dart';
 import 'package:open_note/core/theme/app_colors.dart';
 import 'package:open_note/features/canvas/models/stroke.dart';
+import 'package:open_note/features/canvas/models/stroke_point.dart';
 import 'package:open_note/features/canvas/models/tool_type.dart';
 import 'package:open_note/features/canvas/services/eraser_service.dart';
 
@@ -19,10 +20,14 @@ class CanvasController extends ChangeNotifier {
   double _eraserRadius = AppConstants.defaultEraserRadius;
   bool _isDrawing = false;
 
+  // Palm Rejection State
+  bool _isStylusActive = false;
+  DateTime? _lastStylusTime;
+
   /// Dedicated notifier for the single stroke in-progress to avoid repainting
   /// completed strokes during pen-move events.
-  final ValueNotifier<List<Offset>> currentStrokeNotifier =
-      ValueNotifier<List<Offset>>([]);
+  final ValueNotifier<List<StrokePoint>> currentStrokeNotifier =
+      ValueNotifier<List<StrokePoint>>([]);
 
   List<Stroke> get strokes => List.unmodifiable(_strokes);
   ToolType get activeTool => _activeTool;
@@ -34,6 +39,7 @@ class CanvasController extends ChangeNotifier {
   bool get isDrawing => _isDrawing;
   bool get canUndo => _undoStack.isNotEmpty;
   bool get canRedo => _redoStack.isNotEmpty;
+  bool get isStylusActive => _isStylusActive;
 
   void setTool(ToolType tool) {
     if (_activeTool == tool) return;
@@ -76,8 +82,27 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void onPointerDown(Offset localPosition, {PointerDeviceKind? kind}) {
+  void onPointerDown(
+    Offset localPosition, {
+    PointerDeviceKind? kind,
+    double pressure = 0.5,
+  }) {
     if (_activeTool == ToolType.pan) return;
+
+    // Track active stylus
+    if (kind == PointerDeviceKind.stylus ||
+        kind == PointerDeviceKind.invertedStylus) {
+      _isStylusActive = true;
+      _lastStylusTime = DateTime.now();
+    } else if (kind == PointerDeviceKind.touch && _isStylusActive) {
+      // Palm Rejection: If stylus was used within the last 1.5s, ignore palm touches
+      if (_lastStylusTime != null &&
+          DateTime.now().difference(_lastStylusTime!).inMilliseconds < 1500) {
+        return;
+      } else {
+        _isStylusActive = false;
+      }
+    }
 
     // Inverted stylus tail automatically acts as an eraser
     if (kind == PointerDeviceKind.invertedStylus && !_activeTool.isEraser) {
@@ -90,11 +115,24 @@ class CanvasController extends ChangeNotifier {
     }
 
     _isDrawing = true;
-    currentStrokeNotifier.value = [localPosition];
+    final point = StrokePoint(
+      localPosition.dx,
+      localPosition.dy,
+      pressure: pressure > 0.0 ? pressure : 0.5,
+    );
+    currentStrokeNotifier.value = [point];
   }
 
-  void onPointerMove(Offset localPosition) {
+  void onPointerMove(
+    Offset localPosition, {
+    PointerDeviceKind? kind,
+    double pressure = 0.5,
+  }) {
     if (_activeTool == ToolType.pan) return;
+
+    if (kind == PointerDeviceKind.touch && _isStylusActive) {
+      return; // Palm rejection
+    }
 
     if (_activeTool.isEraser) {
       _handleEraser(localPosition);
@@ -105,12 +143,25 @@ class CanvasController extends ChangeNotifier {
 
     final current = currentStrokeNotifier.value;
     if (current.isEmpty || (current.last - localPosition).distance > 1.0) {
-      currentStrokeNotifier.value = [...current, localPosition];
+      final point = StrokePoint(
+        localPosition.dx,
+        localPosition.dy,
+        pressure: pressure > 0.0 ? pressure : 0.5,
+      );
+      currentStrokeNotifier.value = [...current, point];
     }
   }
 
-  void onPointerUp(Offset localPosition) {
+  void onPointerUp(
+    Offset localPosition, {
+    PointerDeviceKind? kind,
+    double pressure = 0.5,
+  }) {
     if (_activeTool == ToolType.pan) return;
+
+    if (kind == PointerDeviceKind.touch && _isStylusActive) {
+      return;
+    }
 
     if (_activeTool.isEraser) {
       return;
@@ -120,7 +171,12 @@ class CanvasController extends ChangeNotifier {
 
     final rawPoints = currentStrokeNotifier.value;
     if (rawPoints.isNotEmpty) {
-      final finalPoints = [...rawPoints, localPosition];
+      final lastPoint = StrokePoint(
+        localPosition.dx,
+        localPosition.dy,
+        pressure: pressure > 0.0 ? pressure : 0.5,
+      );
+      final finalPoints = [...rawPoints, lastPoint];
       final compressed = Stroke.compressPoints(finalPoints);
 
       Color strokeColor = activeColor;

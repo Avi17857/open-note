@@ -23,11 +23,11 @@ OpenNote bridges the gap between the fluid inking experience of **Samsung Notes*
   - [x] Semi-transparent Highlighter with chisel square caps & auto-translucency.
   - [x] Stroke width adjustment (toolbar button, quick preset chips & fine-tuning slider).
   - [x] Tool-specific memory (independent pen vs. highlighter width and palettes).
-  - [ ] Pen types: Ballpoint vs. Fountain pen (pressure-based tapering).
+  - [x] Pen types: Ballpoint vs. Fountain pen (pressure-based tapering).
   - [ ] Custom hex/HSV color wheel picker.
-- [ ] **Stylus & Palm Rejection:**
-  - Differentiate `PointerDeviceKind.stylus` from touch gestures.
-  - Support stylus eraser button and inverted stylus tail.
+- [x] **Stylus & Palm Rejection:**
+  - [x] Differentiate `PointerDeviceKind.stylus` from touch gestures (palm rejection).
+  - [x] Support stylus eraser button and inverted stylus tail.
 
 ---
 

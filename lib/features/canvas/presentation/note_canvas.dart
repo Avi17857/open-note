@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:open_note/core/constants/app_constants.dart';
 import 'package:open_note/core/theme/app_colors.dart';
 import 'package:open_note/features/canvas/controllers/canvas_controller.dart';
+import 'package:open_note/features/canvas/models/stroke_point.dart';
 import 'package:open_note/features/canvas/models/tool_type.dart';
 import 'package:open_note/features/canvas/presentation/painters/active_stroke_painter.dart';
 import 'package:open_note/features/canvas/presentation/painters/completed_strokes_painter.dart';
@@ -50,7 +51,10 @@ class _NoteCanvasState extends State<NoteCanvas> {
 
   MouseCursor get _currentCursor {
     return switch (widget.controller.activeTool) {
-      ToolType.pen || ToolType.highlighter => SystemMouseCursors.precise,
+      ToolType.pen ||
+      ToolType.fountainPen ||
+      ToolType.highlighter =>
+        SystemMouseCursors.precise,
       ToolType.strokeEraser || ToolType.areaEraser => SystemMouseCursors.click,
       ToolType.pan => SystemMouseCursors.grab,
     };
@@ -105,11 +109,20 @@ class _NoteCanvasState extends State<NoteCanvas> {
                                 widget.controller.onPointerDown(
                               e.localPosition,
                               kind: e.kind,
+                              pressure: e.pressure,
                             ),
                             onPointerMove: (e) => widget.controller
-                                .onPointerMove(e.localPosition),
+                                .onPointerMove(
+                              e.localPosition,
+                              kind: e.kind,
+                              pressure: e.pressure,
+                            ),
                             onPointerUp: (e) =>
-                                widget.controller.onPointerUp(e.localPosition),
+                                widget.controller.onPointerUp(
+                              e.localPosition,
+                              kind: e.kind,
+                              pressure: e.pressure,
+                            ),
                             child: ClipRect(
                               child: Stack(
                                 fit: StackFit.expand,
@@ -131,7 +144,7 @@ class _NoteCanvasState extends State<NoteCanvas> {
                                   ),
 
                                   // 3. Active Stroke in progress (ultra-lightweight live pointer)
-                                  ValueListenableBuilder<List<Offset>>(
+                                  ValueListenableBuilder<List<StrokePoint>>(
                                     valueListenable:
                                         widget.controller.currentStrokeNotifier,
                                     builder: (context, currentPoints, _) {

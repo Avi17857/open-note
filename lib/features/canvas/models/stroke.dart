@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:open_note/features/canvas/models/stroke_point.dart';
 import 'package:open_note/features/canvas/models/tool_type.dart';
 
 class Stroke {
-  final List<Offset> points;
+  final List<StrokePoint> points;
   final Color color;
   final double strokeWidth;
   final ToolType toolType;
@@ -46,11 +47,14 @@ class Stroke {
   }
 
   /// Simplifies points along the stroke to reduce memory and speed up rendering
-  static List<Offset> compressPoints(List<Offset> rawPoints, {double minDistance = 1.0}) {
+  static List<StrokePoint> compressPoints(
+    List<StrokePoint> rawPoints, {
+    double minDistance = 1.0,
+  }) {
     if (rawPoints.length < 3) return List.from(rawPoints);
 
-    final List<Offset> compressed = [rawPoints.first];
-    Offset lastAdded = rawPoints.first;
+    final List<StrokePoint> compressed = [rawPoints.first];
+    StrokePoint lastAdded = rawPoints.first;
 
     for (int i = 1; i < rawPoints.length - 1; i++) {
       final current = rawPoints[i];
@@ -70,7 +74,7 @@ class Stroke {
       'color': color.toARGB32(),
       'strokeWidth': strokeWidth,
       'toolType': toolType.name,
-      'points': points.map((p) => {'x': p.dx, 'y': p.dy}).toList(),
+      'points': points.map((p) => p.toJson()).toList(),
     };
   }
 
@@ -78,10 +82,7 @@ class Stroke {
     final rawPoints = (json['points'] as List<dynamic>?) ?? [];
     final points = rawPoints.map((item) {
       final map = item as Map<String, dynamic>;
-      return Offset(
-        (map['x'] as num).toDouble(),
-        (map['y'] as num).toDouble(),
-      );
+      return StrokePoint.fromJson(map);
     }).toList();
 
     return Stroke(
