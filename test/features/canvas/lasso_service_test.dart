@@ -227,27 +227,46 @@ void main() {
       expect(hitInside, closedBox);
     });
 
-    test('computeDuplicateOffset produces non-overlapping placement', () {
-      const bounds = Rect.fromLTWH(50, 50, 100, 80);
-
-      // When room to the right, places side-by-side
+    test('computeDuplicateOffset produces smart non-overlapping placement for shapes and lines', () {
+      // 1. Compact shape: places side-by-side
+      const compactBounds = Rect.fromLTWH(50, 50, 100, 80);
       final sideBySide = LassoService.computeDuplicateOffset(
-        bounds,
-        pageWidth: 800,
-        pageHeight: 1100,
+        compactBounds,
+        pageWidth: 600,
+        pageHeight: 850,
       );
-      expect(sideBySide.dx, bounds.width + 24.0);
+      expect(sideBySide.dx, compactBounds.width + 16.0);
       expect(sideBySide.dy, 0.0);
 
-      // When near right edge, stacks below
-      const rightEdgeBounds = Rect.fromLTWH(700, 50, 100, 80);
+      // 2. Compact shape near right edge: stacks below
+      const rightEdgeBounds = Rect.fromLTWH(500, 50, 80, 80);
       final stackedBelow = LassoService.computeDuplicateOffset(
         rightEdgeBounds,
-        pageWidth: 800,
-        pageHeight: 1100,
+        pageWidth: 600,
+        pageHeight: 850,
       );
       expect(stackedBelow.dx, 0.0);
-      expect(stackedBelow.dy, rightEdgeBounds.height + 24.0);
+      expect(stackedBelow.dy, rightEdgeBounds.height + 16.0);
+
+      // 3. Horizontal line (or broken line): duplicates parallel below it
+      const lineBounds = Rect.fromLTWH(50, 100, 300, 10);
+      final lineOffset = LassoService.computeDuplicateOffset(
+        lineBounds,
+        pageWidth: 600,
+        pageHeight: 850,
+      );
+      expect(lineOffset.dx, 0.0);
+      expect(lineOffset.dy, greaterThanOrEqualTo(28.0));
+
+      // 4. Vertical line: duplicates parallel to the right
+      const vertBounds = Rect.fromLTWH(100, 50, 10, 300);
+      final vertOffset = LassoService.computeDuplicateOffset(
+        vertBounds,
+        pageWidth: 600,
+        pageHeight: 850,
+      );
+      expect(vertOffset.dx, greaterThanOrEqualTo(28.0));
+      expect(vertOffset.dy, 0.0);
     });
   });
 }

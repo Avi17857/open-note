@@ -1,11 +1,13 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:open_note/core/constants/app_constants.dart';
 import 'package:open_note/core/theme/app_colors.dart';
 import 'package:open_note/features/canvas/controllers/canvas_controller.dart';
 import 'package:open_note/features/canvas/models/stroke.dart';
 import 'package:open_note/features/canvas/models/stroke_point.dart';
 import 'package:open_note/features/canvas/models/tool_type.dart';
+import 'package:open_note/features/canvas/presentation/widgets/selection_toolbar.dart';
 import 'package:open_note/features/canvas/services/eraser_service.dart';
 
 void main() {
@@ -565,6 +567,85 @@ void main() {
       controller.onPointerDown(origCenter);
       controller.onPointerUp(origCenter);
       expect(controller.selectedStrokes.first, controller.strokes.first);
+    });
+
+    test('Duplicating a broken line sliced by area eraser', () {
+      controller.setTool(ToolType.pen);
+      controller.onPointerDown(const Offset(50, 100));
+      controller.onPointerMove(const Offset(150, 100));
+      controller.onPointerMove(const Offset(250, 100));
+      controller.onPointerUp(const Offset(350, 100));
+      expect(controller.strokes.length, 1);
+
+      // Erase middle
+      controller.setTool(ToolType.areaEraser);
+      controller.setEraserRadius(20.0);
+      controller.onPointerDown(const Offset(200, 100));
+      controller.onPointerMove(const Offset(200, 100));
+      controller.onPointerUp(const Offset(200, 100));
+      expect(controller.strokes.length, 2);
+
+      // Lasso tool
+      controller.setTool(ToolType.lasso);
+
+      // Circle both pieces of broken line
+      controller.onPointerDown(const Offset(30, 80));
+      controller.onPointerMove(const Offset(370, 80));
+      controller.onPointerMove(const Offset(370, 120));
+      controller.onPointerMove(const Offset(30, 120));
+      controller.onPointerUp(const Offset(30, 80));
+
+      expect(controller.hasSelection, isTrue);
+      expect(controller.selectedStrokes.length, 2);
+
+      final origBounds = controller.selectionBounds!;
+      controller.duplicateSelection();
+
+      expect(controller.strokes.length, 4);
+      final dupBounds = controller.selectionBounds!;
+      // For a horizontal broken line, duplicate is cleanly positioned parallel below it within page bounds
+      expect(dupBounds.top, greaterThanOrEqualTo(origBounds.bottom));
+      expect(dupBounds.right, lessThanOrEqualTo(AppConstants.defaultPageSize.width));
+    });
+
+    test('Tapping floating toolbar area does not disrupt selection even if another stroke is beneath it', () {
+      final backgroundStroke = Stroke(
+        points: const [StrokePoint(50, 100), StrokePoint(250, 100)],
+        strokeWidth: 4.0,
+      );
+      final shapeToSelect = Stroke(
+        points: const [StrokePoint(100, 160), StrokePoint(200, 160)],
+        strokeWidth: 4.0,
+      );
+      controller.loadStrokes([backgroundStroke, shapeToSelect], clearHistory: true);
+      controller.setTool(ToolType.lasso);
+
+      // 1. Tap on shapeToSelect at (150, 160)
+      controller.onPointerDown(const Offset(150, 160));
+      controller.onPointerUp(const Offset(150, 160));
+      expect(controller.hasSelection, isTrue);
+      expect(controller.selectedStrokes.first, shapeToSelect);
+
+      // The toolbar is positioned above the shape (around y = 160 - 56 = 104)
+      final toolbarRect = SelectionToolbar.getToolbarRect(
+        controller.selectionBounds!,
+        pageWidth: AppConstants.defaultPageSize.width,
+      );
+      // Notice backgroundStroke passes right through y = 100, inside toolbarRect!
+      final tapOnToolbar = toolbarRect.center;
+
+      // 2. Tap on the toolbar (e.g. clicking Delete button)
+      controller.onPointerDown(tapOnToolbar);
+      controller.onPointerUp(tapOnToolbar);
+
+      // Selection must remain on shapeToSelect! It must NOT switch to backgroundStroke or deselect!
+      expect(controller.hasSelection, isTrue);
+      expect(controller.selectedStrokes.first, shapeToSelect);
+
+      // 3. Delete selection deletes shapeToSelect, NOT backgroundStroke!
+      controller.deleteSelection();
+      expect(controller.strokes.length, 1);
+      expect(controller.strokes.first, backgroundStroke);
     });
   });
 

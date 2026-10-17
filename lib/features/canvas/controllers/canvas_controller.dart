@@ -6,6 +6,7 @@ import 'package:open_note/core/theme/app_colors.dart';
 import 'package:open_note/features/canvas/models/stroke.dart';
 import 'package:open_note/features/canvas/models/stroke_point.dart';
 import 'package:open_note/features/canvas/models/tool_type.dart';
+import 'package:open_note/features/canvas/presentation/widgets/selection_toolbar.dart';
 import 'package:open_note/features/canvas/services/eraser_service.dart';
 import 'package:open_note/features/canvas/services/lasso_service.dart';
 
@@ -46,6 +47,7 @@ class CanvasController extends ChangeNotifier {
   bool _lassoTransformDidModify = false;
   Offset? _lassoTouchDownPos;
   double _lassoDragDistance = 0.0;
+  bool _pointerDownOnToolbar = false;
 
   /// Dedicated notifier for the single stroke in-progress to avoid repainting
   /// completed strokes during pen-move events.
@@ -132,7 +134,7 @@ class CanvasController extends ChangeNotifier {
     if (!hasSelection) return;
     _recordHistory();
     final toRemove = _selectedStrokes.toSet();
-    _strokes.removeWhere((s) => toRemove.contains(s));
+    _strokes = _strokes.where((s) => !toRemove.contains(s)).toList();
     _selectedStrokes = [];
     _selectionBounds = null;
     _activeLassoHandle = LassoHandle.none;
@@ -143,12 +145,16 @@ class CanvasController extends ChangeNotifier {
   void duplicateSelection() {
     if (!hasSelection || _selectionBounds == null) return;
     _recordHistory();
-    final offset = LassoService.computeDuplicateOffset(_selectionBounds!);
+    final offset = LassoService.computeDuplicateOffset(
+      _selectionBounds!,
+      pageWidth: AppConstants.defaultPageSize.width,
+      pageHeight: AppConstants.defaultPageSize.height,
+    );
     final duplicated = LassoService.translateStrokes(
       _selectedStrokes,
       offset,
     );
-    _strokes.addAll(duplicated);
+    _strokes = [..._strokes, ...duplicated];
     _selectedStrokes = duplicated;
     _selectionBounds = LassoService.computeSelectionBounds(duplicated);
     _redoStack.clear();
@@ -286,23 +292,25 @@ class CanvasController extends ChangeNotifier {
 
     // 5. Lasso handling
     if (_activeTool == ToolType.lasso) {
+      if (hasSelection && _selectionBounds != null) {
+        final toolbarRect = SelectionToolbar.getToolbarRect(
+          _selectionBounds!,
+          pageWidth: AppConstants.defaultPageSize.width,
+        );
+
+        if (toolbarRect.contains(localPosition)) {
+          // Tap is on the floating action toolbar: do not disrupt button clicks
+          _pointerDownOnToolbar = true;
+          return;
+        }
+      }
+
+      _pointerDownOnToolbar = false;
       _drawingPointerId = pointer;
       _lassoTouchDownPos = localPosition;
       _lassoDragDistance = 0.0;
 
       if (hasSelection && _selectionBounds != null) {
-        final showBelow = _selectionBounds!.top < 60;
-        final topPos = showBelow
-            ? _selectionBounds!.bottom + 8
-            : _selectionBounds!.top - 56;
-        final centerLeft = _selectionBounds!.center.dx;
-        final toolbarRect = Rect.fromLTWH(centerLeft - 80, topPos, 160, 50);
-
-        if (toolbarRect.contains(localPosition)) {
-          // Tap is on the floating action toolbar: do not disrupt button clicks
-          return;
-        }
-
         final handle = LassoService.hitTestHandle(
           localPosition,
           _selectionBounds!,
@@ -479,6 +487,13 @@ class CanvasController extends ChangeNotifier {
     }
 
     if (_activeTool == ToolType.lasso) {
+      if (_pointerDownOnToolbar) {
+        _pointerDownOnToolbar = false;
+        _lassoTouchDownPos = null;
+        _lassoDragDistance = 0.0;
+        return;
+      }
+
       if (_lassoTransformDidModify && _lassoPreTransformAllStrokes != null) {
         _recordSnapshot(_lassoPreTransformAllStrokes!);
         _redoStack.clear();
@@ -564,14 +579,15 @@ class CanvasController extends ChangeNotifier {
       }
 
       _recordHistory();
-      _strokes.add(
+      _strokes = [
+        ..._strokes,
         Stroke(
           points: compressed,
           color: strokeColor,
           strokeWidth: strokeWidth,
           toolType: _activeTool,
         ),
-      );
+      ];
       _redoStack.clear();
     }
 

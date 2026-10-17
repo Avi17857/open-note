@@ -205,11 +205,11 @@ class LassoService {
   static LassoHandle hitTestHandle(
     Offset pointer,
     Rect bounds, {
-    double handleRadius = 20.0,
+    double handleRadius = 24.0,
   }) {
     final effectiveRadius = min(
       handleRadius,
-      min(bounds.width, bounds.height) / 2.2,
+      max(14.0, min(bounds.width, bounds.height) / 2.0),
     );
 
     if ((pointer - bounds.topLeft).distance <= effectiveRadius) {
@@ -224,7 +224,9 @@ class LassoService {
     if ((pointer - bounds.bottomRight).distance <= effectiveRadius) {
       return LassoHandle.bottomRight;
     }
-    if (bounds.contains(pointer)) {
+    // Generous touch target for moving selections (especially thin lines)
+    final moveTarget = bounds.inflate(12.0);
+    if (moveTarget.contains(pointer)) {
       return LassoHandle.move;
     }
     return LassoHandle.none;
@@ -315,20 +317,51 @@ class LassoService {
   }
 
   /// Computes a smart non-overlapping offset for duplicated strokes.
+  /// Adapts based on geometry (horizontal lines stack vertically,
+  /// vertical lines stack horizontally, compact shapes offset neatly).
   static Offset computeDuplicateOffset(
     Rect bounds, {
-    double pageWidth = 800.0,
-    double pageHeight = 1100.0,
+    double pageWidth = 600.0,
+    double pageHeight = 850.0,
   }) {
-    // 1. Try side-by-side to the right with 24px gap
-    if (bounds.right + bounds.width + 24.0 <= pageWidth - 30.0) {
-      return Offset(bounds.width + 24.0, 0);
+    final isHorizontal = bounds.width > 2.0 * bounds.height;
+    final isVertical = bounds.height > 2.0 * bounds.width;
+
+    if (isHorizontal) {
+      // Horizontal or broken horizontal line: duplicate parallel below (or above if near bottom)
+      final stepY = max(28.0, bounds.height + 16.0);
+      if (bounds.bottom + stepY <= pageHeight - 30.0) {
+        return Offset(0, stepY);
+      } else {
+        return Offset(0, -stepY);
+      }
     }
-    // 2. Try stacked below with 24px gap
-    if (bounds.bottom + bounds.height + 24.0 <= pageHeight - 50.0) {
-      return Offset(0, bounds.height + 24.0);
+
+    if (isVertical) {
+      // Vertical line: duplicate parallel to the right (or left if near right margin)
+      final stepX = max(28.0, bounds.width + 16.0);
+      if (bounds.right + stepX <= pageWidth - 30.0) {
+        return Offset(stepX, 0);
+      } else {
+        return Offset(-stepX, 0);
+      }
     }
-    // 3. Fallback to a clear diagonal offset
-    return const Offset(45.0, 45.0);
+
+    // Compact shapes (icons, words, circles): try side-by-side
+    if (bounds.width <= 140.0 && bounds.height <= 140.0) {
+      final stepX = bounds.width + 16.0;
+      if (bounds.right + stepX <= pageWidth - 30.0) {
+        return Offset(stepX, 0);
+      }
+      final stepY = bounds.height + 16.0;
+      if (bounds.bottom + stepY <= pageHeight - 40.0) {
+        return Offset(0, stepY);
+      }
+    }
+
+    // General shapes: clear predictable diagonal offset guaranteed inside page
+    final dx = (bounds.right + 32.0 <= pageWidth - 20.0) ? 32.0 : -32.0;
+    final dy = (bounds.bottom + 32.0 <= pageHeight - 40.0) ? 32.0 : -32.0;
+    return Offset(dx, dy);
   }
 }

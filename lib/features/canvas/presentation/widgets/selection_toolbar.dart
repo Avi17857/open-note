@@ -13,29 +13,30 @@ class SelectionToolbar extends StatelessWidget {
   });
 
   /// Computes the bounding rectangle of the floating toolbar relative to page bounds.
-  static Rect getToolbarRect(Rect bounds) {
+  static Rect getToolbarRect(Rect bounds, {double pageWidth = 600.0}) {
     final showBelow = bounds.top < 60;
     final topPos = showBelow ? bounds.bottom + 8 : bounds.top - 56;
     final centerLeft = bounds.center.dx;
-    return Rect.fromLTWH(centerLeft - 80, topPos, 160, 50);
+    final leftPos = (centerLeft - 80).clamp(8.0, pageWidth - 160.0 - 8.0);
+    return Rect.fromLTWH(leftPos, topPos, 160, 50);
   }
 
   @override
   Widget build(BuildContext context) {
-    // If selection is near top of canvas, position toolbar below the bounds
-    final showBelow = bounds.top < 60;
-    final topPos = showBelow ? bounds.bottom + 12 : bounds.top - 52;
-    final centerLeft = bounds.center.dx;
+    final rect = getToolbarRect(bounds);
 
     return Positioned(
-      top: topPos,
-      left: centerLeft - 75,
-      child: Material(
-        elevation: 4,
-        shadowColor: const Color(0x33000000),
-        borderRadius: BorderRadius.circular(20),
-        color: Colors.white,
-        child: Container(
+      top: rect.top,
+      left: rect.left,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {}, // Absorbs taps so they do not fall through to the canvas
+        child: Material(
+          elevation: 4,
+          shadowColor: const Color(0x33000000),
+          borderRadius: BorderRadius.circular(20),
+          color: Colors.white,
+          child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
@@ -74,6 +75,7 @@ class SelectionToolbar extends StatelessWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }

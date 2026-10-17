@@ -57,6 +57,8 @@ class CompletedStrokesPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CompletedStrokesPainter oldDelegate) {
-    return oldDelegate.strokes != strokes || oldDelegate.layer != layer;
+    return oldDelegate.strokes != strokes ||
+        oldDelegate.strokes.length != strokes.length ||
+        oldDelegate.layer != layer;
   }
 }

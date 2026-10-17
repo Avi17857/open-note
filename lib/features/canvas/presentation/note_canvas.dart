@@ -108,174 +108,181 @@ class _NoteCanvasState extends State<NoteCanvas> {
                               ),
                             ],
                           ),
-                            child: Listener(
-                              behavior: HitTestBehavior.opaque,
-                              onPointerDown: (e) =>
-                                  widget.controller.onPointerDown(
-                                e.localPosition,
-                                pointer: e.pointer,
-                                kind: e.kind,
-                                pressure: e.pressure,
-                                buttons: e.buttons,
-                              ),
-                              onPointerMove: (e) => widget.controller
-                                  .onPointerMove(
-                                e.localPosition,
-                                pointer: e.pointer,
-                                kind: e.kind,
-                                pressure: e.pressure,
-                                buttons: e.buttons,
-                              ),
-                              onPointerUp: (e) =>
-                                  widget.controller.onPointerUp(
-                                e.localPosition,
-                                pointer: e.pointer,
-                                kind: e.kind,
-                                pressure: e.pressure,
-                                buttons: e.buttons,
-                              ),
-                              onPointerCancel: (e) =>
-                                  widget.controller.onPointerCancel(
-                                pointer: e.pointer,
-                              ),
-                            child: ClipRect(
-                              child: Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  // 1. Page Background (plain, lined, or grid)
-                                  CustomPaint(
-                                    painter: PageBackgroundPainter(
-                                      template: widget.template,
+                          child: ClipRect(
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                // Canvas drawing surface and gesture listener
+                                Positioned.fill(
+                                  child: Listener(
+                                    behavior: HitTestBehavior.opaque,
+                                    onPointerDown: (e) =>
+                                        widget.controller.onPointerDown(
+                                      e.localPosition,
+                                      pointer: e.pointer,
+                                      kind: e.kind,
+                                      pressure: e.pressure,
+                                      buttons: e.buttons,
                                     ),
-                                  ),
-
-                                  // 2. Completed Highlighters (always render behind ink)
-                                  RepaintBoundary(
-                                    child: CustomPaint(
-                                      painter: CompletedStrokesPainter(
-                                        widget.controller.strokes,
-                                        layer: StrokeLayer.highlightersOnly,
-                                      ),
+                                    onPointerMove: (e) => widget.controller
+                                        .onPointerMove(
+                                      e.localPosition,
+                                      pointer: e.pointer,
+                                      kind: e.kind,
+                                      pressure: e.pressure,
+                                      buttons: e.buttons,
                                     ),
-                                  ),
-
-                                  // 3. Active Highlighter (while drawing, renders behind existing pen notes!)
-                                  ValueListenableBuilder<List<StrokePoint>>(
-                                    valueListenable:
-                                        widget.controller.currentStrokeNotifier,
-                                    builder: (context, currentPoints, _) {
-                                      if (widget.controller.activeTool !=
-                                              ToolType.highlighter ||
-                                          currentPoints.isEmpty) {
-                                        return const SizedBox.shrink();
-                                      }
-                                      return RepaintBoundary(
-                                        child: CustomPaint(
-                                          painter: ActiveStrokePainter(
-                                            points: currentPoints,
-                                            color:
-                                                widget.controller.activeColor,
-                                            strokeWidth:
-                                                widget.controller.strokeWidth,
-                                            toolType:
-                                                widget.controller.activeTool,
+                                    onPointerUp: (e) =>
+                                        widget.controller.onPointerUp(
+                                      e.localPosition,
+                                      pointer: e.pointer,
+                                      kind: e.kind,
+                                      pressure: e.pressure,
+                                      buttons: e.buttons,
+                                    ),
+                                    onPointerCancel: (e) =>
+                                        widget.controller.onPointerCancel(
+                                      pointer: e.pointer,
+                                    ),
+                                    child: Stack(
+                                      fit: StackFit.expand,
+                                      children: [
+                                        // 1. Page Background (plain, lined, or grid)
+                                        CustomPaint(
+                                          painter: PageBackgroundPainter(
+                                            template: widget.template,
                                           ),
                                         ),
-                                      );
-                                    },
-                                  ),
 
-                                  // 4. Completed Pens & Fountain Pens (crisp, on top of highlighters)
-                                  RepaintBoundary(
-                                    child: CustomPaint(
-                                      painter: CompletedStrokesPainter(
-                                        widget.controller.strokes,
-                                        layer: StrokeLayer.pensOnly,
-                                      ),
-                                    ),
-                                  ),
-
-                                  // 5. Active Pen / Fountain Pen (renders on top of everything)
-                                  ValueListenableBuilder<List<StrokePoint>>(
-                                    valueListenable:
-                                        widget.controller.currentStrokeNotifier,
-                                    builder: (context, currentPoints, _) {
-                                      if (widget.controller.activeTool ==
-                                              ToolType.highlighter ||
-                                          currentPoints.isEmpty) {
-                                        return const SizedBox.shrink();
-                                      }
-                                      return RepaintBoundary(
-                                        child: CustomPaint(
-                                          painter: ActiveStrokePainter(
-                                            points: currentPoints,
-                                            color:
-                                                widget.controller.activeColor,
-                                            strokeWidth:
-                                                widget.controller.strokeWidth,
-                                            toolType:
-                                                widget.controller.activeTool,
+                                        // 2. Completed Highlighters (always render behind ink)
+                                        RepaintBoundary(
+                                          child: CustomPaint(
+                                            painter: CompletedStrokesPainter(
+                                              widget.controller.strokes,
+                                              layer: StrokeLayer.highlightersOnly,
+                                            ),
                                           ),
                                         ),
-                                      );
-                                    },
-                                  ),
 
-                                  // 6. Eraser Visual Cursor (Ring under finger/stylus when erasing)
-                                  ValueListenableBuilder<Offset?>(
-                                    valueListenable:
-                                        widget.controller.eraserPointerNotifier,
-                                    builder: (context, eraserPos, _) {
-                                      if (eraserPos == null) {
-                                        return const SizedBox.shrink();
-                                      }
-                                      return CustomPaint(
-                                        painter: EraserCursorPainter(
-                                          position: eraserPos,
-                                          radius:
-                                              widget.controller.eraserRadius,
-                                          isAreaEraser: widget.controller
-                                                  .activeTool ==
-                                              ToolType.areaEraser,
+                                        // 3. Active Highlighter (while drawing, renders behind existing pen notes!)
+                                        ValueListenableBuilder<List<StrokePoint>>(
+                                          valueListenable:
+                                              widget.controller.currentStrokeNotifier,
+                                          builder: (context, currentPoints, _) {
+                                            if (widget.controller.activeTool !=
+                                                    ToolType.highlighter ||
+                                                currentPoints.isEmpty) {
+                                              return const SizedBox.shrink();
+                                            }
+                                            return RepaintBoundary(
+                                              child: CustomPaint(
+                                                painter: ActiveStrokePainter(
+                                                  points: currentPoints,
+                                                  color:
+                                                      widget.controller.activeColor,
+                                                  strokeWidth:
+                                                      widget.controller.strokeWidth,
+                                                  toolType:
+                                                      widget.controller.activeTool,
+                                                ),
+                                              ),
+                                            );
+                                          },
                                         ),
-                                      );
-                                    },
-                                  ),
 
-                                  // 7. Lasso in-progress freeform loop
-                                  ValueListenableBuilder<List<Offset>>(
-                                    valueListenable:
-                                        widget.controller.lassoPointsNotifier,
-                                    builder: (context, lassoPoints, _) {
-                                      if (lassoPoints.isEmpty) {
-                                        return const SizedBox.shrink();
-                                      }
-                                      return CustomPaint(
-                                        painter: LassoPathPainter(lassoPoints),
-                                      );
-                                    },
-                                  ),
+                                        // 4. Completed Pens & Fountain Pens (crisp, on top of highlighters)
+                                        RepaintBoundary(
+                                          child: CustomPaint(
+                                            painter: CompletedStrokesPainter(
+                                              widget.controller.strokes,
+                                              layer: StrokeLayer.pensOnly,
+                                            ),
+                                          ),
+                                        ),
 
-                                  // 8. Selection dashed bounding box and resize handles
-                                  if (widget.controller.hasSelection &&
-                                      widget.controller.selectionBounds != null)
-                                    CustomPaint(
-                                      painter: SelectionPainter(
-                                        bounds:
-                                            widget.controller.selectionBounds!,
-                                      ),
+                                        // 5. Active Pen / Fountain Pen (renders on top of everything)
+                                        ValueListenableBuilder<List<StrokePoint>>(
+                                          valueListenable:
+                                              widget.controller.currentStrokeNotifier,
+                                          builder: (context, currentPoints, _) {
+                                            if (widget.controller.activeTool ==
+                                                    ToolType.highlighter ||
+                                                currentPoints.isEmpty) {
+                                              return const SizedBox.shrink();
+                                            }
+                                            return RepaintBoundary(
+                                              child: CustomPaint(
+                                                painter: ActiveStrokePainter(
+                                                  points: currentPoints,
+                                                  color:
+                                                      widget.controller.activeColor,
+                                                  strokeWidth:
+                                                      widget.controller.strokeWidth,
+                                                  toolType:
+                                                      widget.controller.activeTool,
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                        ),
+
+                                        // 6. Eraser Visual Cursor (Ring under finger/stylus when erasing)
+                                        ValueListenableBuilder<Offset?>(
+                                          valueListenable:
+                                              widget.controller.eraserPointerNotifier,
+                                          builder: (context, eraserPos, _) {
+                                            if (eraserPos == null) {
+                                              return const SizedBox.shrink();
+                                            }
+                                            return CustomPaint(
+                                              painter: EraserCursorPainter(
+                                                position: eraserPos,
+                                                radius:
+                                                    widget.controller.eraserRadius,
+                                                isAreaEraser: widget.controller
+                                                        .activeTool ==
+                                                    ToolType.areaEraser,
+                                              ),
+                                            );
+                                          },
+                                        ),
+
+                                        // 7. Lasso in-progress freeform loop
+                                        ValueListenableBuilder<List<Offset>>(
+                                          valueListenable:
+                                              widget.controller.lassoPointsNotifier,
+                                          builder: (context, lassoPoints, _) {
+                                            if (lassoPoints.isEmpty) {
+                                              return const SizedBox.shrink();
+                                            }
+                                            return CustomPaint(
+                                              painter: LassoPathPainter(lassoPoints),
+                                            );
+                                          },
+                                        ),
+
+                                        // 8. Selection dashed bounding box and resize handles
+                                        if (widget.controller.hasSelection &&
+                                            widget.controller.selectionBounds != null)
+                                          CustomPaint(
+                                            painter: SelectionPainter(
+                                              bounds:
+                                                  widget.controller.selectionBounds!,
+                                            ),
+                                          ),
+                                      ],
                                     ),
+                                  ),
+                                ),
 
-                                  // 9. Floating contextual toolbar for selected strokes
-                                  if (widget.controller.hasSelection &&
-                                      widget.controller.selectionBounds != null)
-                                    SelectionToolbar(
-                                      controller: widget.controller,
-                                      bounds:
-                                          widget.controller.selectionBounds!,
-                                    ),
-                                ],
-                              ),
+                                // 9. Floating contextual toolbar for selected strokes (rendered ON TOP of Listener)
+                                if (widget.controller.hasSelection &&
+                                    widget.controller.selectionBounds != null)
+                                  SelectionToolbar(
+                                    controller: widget.controller,
+                                    bounds: widget.controller.selectionBounds!,
+                                  ),
+                              ],
                             ),
                           ),
                         ),
