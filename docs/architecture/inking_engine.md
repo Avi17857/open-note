@@ -28,25 +28,16 @@ Digital note-taking applications (like Samsung Notes, GoodNotes, and Apple Notes
 We preserve **100% vector fidelity** while achieving **$O(1)$ live drawing performance** by separating the visual rendering pipeline from data management.
 
 ```
-                    User Pointer Move (120 Hz)
-                                │
-                                ▼
          ┌──────────────────────────────────────────────┐
-         │          Active Stroke Overlay               │
-         │       (ActiveStrokePainter - 120 FPS)        │
-         └──────────────────────────────────────────────┘
-                                │
-                      Pointer Up (Stroke Complete)
-                                │
-                                ▼
-         ┌──────────────────────────────────────────────┐
-         │     Background Completed Strokes Layer       │
-         │      (RepaintBoundary GPU Texture Cache)     │
-         └──────────────────────────────────────────────┘
-                                │
-         ┌──────────────────────────────────────────────┐
-         │             Paper Background                 │
-         │           (Ruled, Grid, Plain)               │
+         │     5. Active Pen / Fountain Pen Overlay     │  <-- 120 FPS live ink
+         ├──────────────────────────────────────────────┤
+         │     4. Completed Pens & Fountain Pens        │  <-- RepaintBoundary (100% crisp, dark text)
+         ├──────────────────────────────────────────────┤
+         │     3. Active Highlighter Overlay            │  <-- 120 FPS live highlighter
+         ├──────────────────────────────────────────────┤
+         │     2. Completed Highlighters Layer          │  <-- RepaintBoundary (glows behind ink)
+         ├──────────────────────────────────────────────┤
+         │     1. Paper Background                      │  <-- Ruled, Grid, Plain paper lines
          └──────────────────────────────────────────────┘
 ```
 

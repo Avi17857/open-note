@@ -137,20 +137,62 @@ class _NoteCanvasState extends State<NoteCanvas> {
                                     ),
                                   ),
 
-                                  // 2. Completed Strokes (only repaints when a stroke finishes or erases)
+                                  // 2. Completed Highlighters (always render behind ink)
                                   RepaintBoundary(
                                     child: CustomPaint(
                                       painter: CompletedStrokesPainter(
                                         widget.controller.strokes,
+                                        layer: StrokeLayer.highlightersOnly,
                                       ),
                                     ),
                                   ),
 
-                                  // 3. Active Stroke in progress (ultra-lightweight live pointer)
+                                  // 3. Active Highlighter (while drawing, renders behind existing pen notes!)
                                   ValueListenableBuilder<List<StrokePoint>>(
                                     valueListenable:
                                         widget.controller.currentStrokeNotifier,
                                     builder: (context, currentPoints, _) {
+                                      if (widget.controller.activeTool !=
+                                              ToolType.highlighter ||
+                                          currentPoints.isEmpty) {
+                                        return const SizedBox.shrink();
+                                      }
+                                      return RepaintBoundary(
+                                        child: CustomPaint(
+                                          painter: ActiveStrokePainter(
+                                            points: currentPoints,
+                                            color:
+                                                widget.controller.activeColor,
+                                            strokeWidth:
+                                                widget.controller.strokeWidth,
+                                            toolType:
+                                                widget.controller.activeTool,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+
+                                  // 4. Completed Pens & Fountain Pens (crisp, on top of highlighters)
+                                  RepaintBoundary(
+                                    child: CustomPaint(
+                                      painter: CompletedStrokesPainter(
+                                        widget.controller.strokes,
+                                        layer: StrokeLayer.pensOnly,
+                                      ),
+                                    ),
+                                  ),
+
+                                  // 5. Active Pen / Fountain Pen (renders on top of everything)
+                                  ValueListenableBuilder<List<StrokePoint>>(
+                                    valueListenable:
+                                        widget.controller.currentStrokeNotifier,
+                                    builder: (context, currentPoints, _) {
+                                      if (widget.controller.activeTool ==
+                                              ToolType.highlighter ||
+                                          currentPoints.isEmpty) {
+                                        return const SizedBox.shrink();
+                                      }
                                       return RepaintBoundary(
                                         child: CustomPaint(
                                           painter: ActiveStrokePainter(
