@@ -61,3 +61,4 @@ lib/
 ## Key Documentation References
 - **Product Roadmap & Feature Backlog:** Refer to [`docs/ROADMAP.md`](file:///d:/flutter-dev/projects/open_note/docs/ROADMAP.md) for milestones and task status.
 - **Inking Engine Technical Architecture:** Refer to [`docs/architecture/inking_engine.md`](file:///d:/flutter-dev/projects/open_note/docs/architecture/inking_engine.md) for detailed explanations of dual-layer rendering, vector retention, undo/redo mechanics, and collision math.
+- **Rich Text Engine Technical Architecture:** Refer to [`docs/architecture/rich_text_engine.md`](file:///d:/flutter-dev/projects/open_note/docs/architecture/rich_text_engine.md) for detailed explanations of the attributed-span text model, JSON serialization, boundary slicing, and canvas integration.

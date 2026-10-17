@@ -39,7 +39,23 @@ OpenNote bridges the gap between the fluid inking experience of **Samsung Notes*
 
 ---
 
-## Milestone 3: Page Templates & Canvas Sizing
+## Milestone 3: Freeform Rich Text Engine
+*(Documented in [`docs/architecture/rich_text_engine.md`](file:///d:/flutter-dev/projects/open_note/docs/architecture/rich_text_engine.md))*
+- [ ] **Attributed-Span Model:**
+  - `RichTextSpan` and `NoteTextBox` models with JSON serialization/deserialization.
+  - Native `RichTextEditingController` with boundary slicing and real-time formatting.
+- [ ] **Classic Formatting Toolbar:**
+  - Inline toggles: Bold, Italic, Underline, Strikethrough.
+  - Heading selector: Body, H1, H2, H3.
+  - Text color and background highlighter picker.
+- [ ] **Canvas Text Container:**
+  - `T` (Text) tool on main toolbar: tap canvas to spawn a new text box.
+  - Borderless editing with subtle drag-handles to move and resize anywhere on the page.
+  - Native soft-keyboard and Samsung S-Pen handwriting-to-text integration.
+
+---
+
+## Milestone 4: Page Templates & Canvas Sizing
 - [ ] **Paper Backgrounds:**
   - Blank / Plain
   - Ruled / Lined (custom line spacing)
@@ -51,7 +67,7 @@ OpenNote bridges the gap between the fluid inking experience of **Samsung Notes*
 
 ---
 
-## Milestone 4: OneNote Hierarchy & Navigation
+## Milestone 5: OneNote Hierarchy & Navigation
 - [ ] **Hierarchy Structure:**
   - `Notebook` contains multiple `Section`s.
   - `Section` contains multiple `NotePage`s.
@@ -62,14 +78,16 @@ OpenNote bridges the gap between the fluid inking experience of **Samsung Notes*
 
 ---
 
-## Milestone 5: Mixed Media & Typing
-- [ ] **Text Integration:** Floating typed text boxes anywhere on the page (integrating Fleather).
-- [ ] **Image Insertion:** Insert images, reposition, and draw annotations over them.
+## Milestone 6: STEM Tools & Mixed Media
+- [ ] **LaTeX Equations:** Inline math formula chips rendered via `WidgetSpan`.
+- [ ] **Syntax-Highlighted Code Blocks:** Formatted blocks with language highlighting and copy button.
+- [ ] **Collapsible Study Toggles:** Active-recall question/answer toggles for students.
+- [ ] **Image Insertion:** Insert images, reposition, and annotate with pen.
 - [ ] **PDF Annotation:** Import multi-page PDF documents as background pages and annotate with pen.
 
 ---
 
-## Milestone 6: Storage, Export & Sync
-- [ ] **Robust File Format:** Structured JSON / zipped package format storing vector stroke coordinates and metadata.
+## Milestone 7: Storage, Export & Sync
+- [ ] **Robust File Format:** Structured JSON / zipped package format storing vector stroke coordinates and text box spans.
 - [ ] **Auto-Save & Background Flushing:** Debounced background saves so drawing never drops frames.
 - [ ] **Export Options:** Export to PDF, PNG, and vector SVG.
