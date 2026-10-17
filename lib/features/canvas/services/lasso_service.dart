@@ -202,11 +202,16 @@ class LassoService {
     }).toList();
   }
 
-  /// Computes the position of the rotation handle extending above [bounds].
+  /// Computes the position of the rotation handle extending from [bounds].
+  /// If the selection is near the top edge of the page (bounds.top < 36),
+  /// the stem flips below the selection so it is not clipped off-screen.
   static Offset getRotationHandlePosition(
     Rect bounds, {
-    double stemLength = 26.0,
+    double stemLength = 28.0,
   }) {
+    if (bounds.top < 36.0) {
+      return Offset(bounds.center.dx, bounds.bottom + stemLength);
+    }
     return Offset(bounds.center.dx, bounds.top - stemLength);
   }
 
@@ -238,9 +243,9 @@ class LassoService {
   static LassoHandle hitTestHandle(
     Offset pointer,
     Rect bounds, {
-    double handleRadius = 24.0,
+    double handleRadius = 26.0,
   }) {
-    // 1. Rotation knob extending above topCenter
+    // 1. Rotation knob extending from selection
     final rotateHandlePos = getRotationHandlePosition(bounds);
     if ((pointer - rotateHandlePos).distance <= handleRadius) {
       return LassoHandle.rotate;

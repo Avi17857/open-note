@@ -56,6 +56,12 @@ lib/
 4. **Stylus vs. Touch Discrimination:**
    - Support `PointerDeviceKind.stylus` and `invertedStylus` (stylus eraser button/tail) with palm rejection for touch if stylus is active.
 
+5. **Gesture Disambiguation & Overlay Layering (`Listener` vs. `GestureDetector`):**
+   - **Stack & Arena Hit-Testing Precedence:** Overlay widgets placed on top of the canvas `Listener` (e.g., floating toolbars, contextual popups) will intercept hit-tests if they use opaque `GestureDetector`s or absorbing material containers.
+   - **Zero Hit-Target Overlap:** Never place floating contextual toolbars where their hit-test rectangle overlaps canvas interaction handles (e.g., rotation knobs, corner resize handles). By default, position contextual toolbars on the opposite edge (e.g., below `bounds.bottom + 14` instead of above the rotation stem).
+   - **Hide Overlays During Active Transforms:** Always hide contextual toolbars while any interactive transform is in progress (`controller.isTransforming`). This prevents touch interception, layout thrashing, and pointer cancellation as fingers or styluses sweep across the screen.
+   - **Handle Priority in Gesture Dispatch:** In `CanvasController.onPointerDown`, explicit handle hit-testing (rotation knob, resize corners) must execute *before* toolbar bounding checks or fallback deselect/select logic.
+
 ---
 
 ## Key Documentation References

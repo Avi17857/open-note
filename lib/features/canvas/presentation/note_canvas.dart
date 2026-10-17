@@ -276,8 +276,10 @@ class _NoteCanvasState extends State<NoteCanvas> {
                                 ),
 
                                 // 9. Floating contextual toolbar for selected strokes (rendered ON TOP of Listener)
+                                // Automatically hidden while actively transforming (moving, scaling, rotating)
                                 if (widget.controller.hasSelection &&
-                                    widget.controller.selectionBounds != null)
+                                    widget.controller.selectionBounds != null &&
+                                    !widget.controller.isTransforming)
                                   SelectionToolbar(
                                     controller: widget.controller,
                                     bounds: widget.controller.selectionBounds!,

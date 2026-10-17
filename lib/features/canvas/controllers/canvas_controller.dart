@@ -51,6 +51,7 @@ class CanvasController extends ChangeNotifier {
   bool _pointerDownOnToolbar = false;
   Offset? _lassoRotationCenter;
   double? _lassoRotationStartAngle;
+  final List<int> _lassoSelectedIndices = [];
 
   /// Dedicated notifier for the single stroke in-progress to avoid repainting
   /// completed strokes during pen-move events.
@@ -80,6 +81,7 @@ class CanvasController extends ChangeNotifier {
   List<Stroke> get selectedStrokes => List.unmodifiable(_selectedStrokes);
   bool get hasSelection => _selectedStrokes.isNotEmpty;
   Rect? get selectionBounds => _selectionBounds;
+  bool get isTransforming => _activeLassoHandle != LassoHandle.none;
 
   bool _isStylusButtonPressed(int buttons) {
     return (buttons & kPrimaryStylusButton != 0) ||
@@ -131,6 +133,7 @@ class CanvasController extends ChangeNotifier {
     _lassoTransformDidModify = false;
     _lassoRotationCenter = null;
     _lassoRotationStartAngle = null;
+    _lassoSelectedIndices.clear();
     lassoPointsNotifier.value = [];
     notifyListeners();
   }
@@ -324,36 +327,33 @@ class CanvasController extends ChangeNotifier {
 
     // 5. Lasso handling
     if (_activeTool == ToolType.lasso) {
-      if (hasSelection && _selectionBounds != null) {
-        final toolbarRect = SelectionToolbar.getToolbarRect(
-          _selectionBounds!,
-          pageWidth: AppConstants.defaultPageSize.width,
-        );
-
-        if (toolbarRect.contains(localPosition)) {
-          // Tap is on the floating action toolbar: do not disrupt button clicks
-          _pointerDownOnToolbar = true;
-          return;
-        }
-      }
-
       _pointerDownOnToolbar = false;
       _drawingPointerId = pointer;
       _lassoTouchDownPos = localPosition;
       _lassoDragDistance = 0.0;
 
       if (hasSelection && _selectionBounds != null) {
+        // Priority 1: Check handles first! (Rotation knob or 4 corner resize handles)
         final handle = LassoService.hitTestHandle(
           localPosition,
           _selectionBounds!,
         );
-        if (handle != LassoHandle.none) {
+
+        if (handle != LassoHandle.none && handle != LassoHandle.move) {
           _activeLassoHandle = handle;
           _lassoDragStartPos = localPosition;
           _lassoInitialBounds = _selectionBounds;
           _lassoInitialSelectedStrokes = List.from(_selectedStrokes);
           _lassoPreTransformAllStrokes = List.from(_strokes);
           _lassoTransformDidModify = false;
+          _lassoSelectedIndices.clear();
+          final selSet = _selectedStrokes.toSet();
+          for (int i = 0; i < _strokes.length; i++) {
+            if (selSet.contains(_strokes[i])) {
+              _lassoSelectedIndices.add(i);
+            }
+          }
+
           if (handle == LassoHandle.rotate) {
             final center = _selectionBounds!.center;
             _lassoRotationCenter = center;
@@ -365,6 +365,40 @@ class CanvasController extends ChangeNotifier {
             _lassoRotationCenter = null;
             _lassoRotationStartAngle = null;
           }
+          notifyListeners();
+          return;
+        }
+
+        // Priority 2: Floating contextual toolbar
+        final toolbarRect = SelectionToolbar.getToolbarRect(
+          _selectionBounds!,
+          pageWidth: AppConstants.defaultPageSize.width,
+        );
+
+        if (toolbarRect.contains(localPosition)) {
+          // Tap is on the floating action toolbar: do not disrupt button clicks
+          _pointerDownOnToolbar = true;
+          return;
+        }
+
+        // Priority 3: Move handle (inside selection bounds)
+        if (handle == LassoHandle.move) {
+          _activeLassoHandle = handle;
+          _lassoDragStartPos = localPosition;
+          _lassoInitialBounds = _selectionBounds;
+          _lassoInitialSelectedStrokes = List.from(_selectedStrokes);
+          _lassoPreTransformAllStrokes = List.from(_strokes);
+          _lassoTransformDidModify = false;
+          _lassoSelectedIndices.clear();
+          final selSet = _selectedStrokes.toSet();
+          for (int i = 0; i < _strokes.length; i++) {
+            if (selSet.contains(_strokes[i])) {
+              _lassoSelectedIndices.add(i);
+            }
+          }
+          _lassoRotationCenter = null;
+          _lassoRotationStartAngle = null;
+          notifyListeners();
           return;
         }
       }
@@ -373,6 +407,7 @@ class CanvasController extends ChangeNotifier {
       _lassoDragStartPos = null;
       _lassoRotationCenter = null;
       _lassoRotationStartAngle = null;
+      _lassoSelectedIndices.clear();
       lassoPointsNotifier.value = [localPosition];
       return;
     }
@@ -439,15 +474,19 @@ class CanvasController extends ChangeNotifier {
             localPosition.dx - _lassoRotationCenter!.dx,
           );
           var angleDelta = currentAngle - _lassoRotationStartAngle!;
+          while (angleDelta > pi) {
+            angleDelta -= 2 * pi;
+          }
+          while (angleDelta < -pi) {
+            angleDelta += 2 * pi;
+          }
 
           // Angle snapping: snap to 15-degree increments if within 3.5 degrees
           const snapThreshold = 3.5 * pi / 180.0;
           const snapStep = 15.0 * pi / 180.0;
-          final remainder = angleDelta % snapStep;
-          if (remainder < snapThreshold) {
-            angleDelta -= remainder;
-          } else if (snapStep - remainder < snapThreshold) {
-            angleDelta += (snapStep - remainder);
+          final nearestSnap = (angleDelta / snapStep).round() * snapStep;
+          if ((angleDelta - nearestSnap).abs() < snapThreshold) {
+            angleDelta = nearestSnap;
           }
 
           updatedSelected = LassoService.rotateStrokes(
@@ -477,14 +516,11 @@ class CanvasController extends ChangeNotifier {
           );
         }
 
-        final oldSelectedSet = _selectedStrokes.toSet();
-        final List<Stroke> newStrokes = [];
-        int selIdx = 0;
-        for (final s in _strokes) {
-          if (oldSelectedSet.contains(s)) {
-            newStrokes.add(updatedSelected[selIdx++]);
-          } else {
-            newStrokes.add(s);
+        final List<Stroke> newStrokes = List.from(_lassoPreTransformAllStrokes!);
+        for (int i = 0; i < _lassoSelectedIndices.length; i++) {
+          final idx = _lassoSelectedIndices[i];
+          if (idx < newStrokes.length && i < updatedSelected.length) {
+            newStrokes[idx] = updatedSelected[i];
           }
         }
         _strokes = newStrokes;
@@ -576,6 +612,7 @@ class CanvasController extends ChangeNotifier {
         _lassoTransformDidModify = false;
         _lassoRotationCenter = null;
         _lassoRotationStartAngle = null;
+        _lassoSelectedIndices.clear();
         _activeLassoHandle = LassoHandle.none;
         notifyListeners();
         return;
@@ -589,9 +626,11 @@ class CanvasController extends ChangeNotifier {
         _lassoTransformDidModify = false;
         _lassoRotationCenter = null;
         _lassoRotationStartAngle = null;
+        _lassoSelectedIndices.clear();
         _activeLassoHandle = LassoHandle.none;
         _lassoTouchDownPos = null;
         _lassoDragDistance = 0.0;
+        notifyListeners();
         return;
       }
 
@@ -601,6 +640,7 @@ class CanvasController extends ChangeNotifier {
       _lassoTransformDidModify = false;
       _lassoRotationCenter = null;
       _lassoRotationStartAngle = null;
+      _lassoSelectedIndices.clear();
       _activeLassoHandle = LassoHandle.none;
 
       final points = lassoPointsNotifier.value;

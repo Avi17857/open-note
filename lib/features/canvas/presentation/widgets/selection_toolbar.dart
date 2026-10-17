@@ -13,14 +13,31 @@ class SelectionToolbar extends StatelessWidget {
   });
 
   /// Computes the bounding rectangle of the floating toolbar relative to page bounds.
-  static Rect getToolbarRect(Rect bounds, {double pageWidth = 600.0}) {
-    // Rotation handle sits 26px above bounds.top.
-    // If selection is near top of canvas (bounds.top < 85), position toolbar below bounds.
-    final showBelow = bounds.top < 85;
-    final topPos = showBelow ? bounds.bottom + 12 : bounds.top - 72;
+  /// When rotation knob is at top, positions toolbar below the selection box to prevent
+  /// any overlap or touch conflicts with the rotation knob. If near the bottom edge,
+  /// places toolbar well above the rotation knob.
+  static Rect getToolbarRect(
+    Rect bounds, {
+    double pageWidth = 600.0,
+    double pageHeight = 850.0,
+  }) {
     final centerLeft = bounds.center.dx;
     final leftPos = (centerLeft - 95).clamp(8.0, pageWidth - 190.0 - 8.0);
-    return Rect.fromLTWH(leftPos, topPos, 190, 50);
+
+    if (bounds.top >= 36.0) {
+      // Rotation handle is at top (bounds.top - 28)
+      // Default: position below selection bounds (complete clearance from rotation knob)
+      if (bounds.bottom + 14.0 <= pageHeight - 55.0) {
+        return Rect.fromLTWH(leftPos, bounds.bottom + 14.0, 190, 44);
+      } else {
+        // Selection near bottom: position well above rotation knob
+        return Rect.fromLTWH(leftPos, bounds.top - 82.0, 190, 44);
+      }
+    } else {
+      // Rotation handle flipped below (bounds.bottom + 28)
+      final topPos = (bounds.bottom + 58.0).clamp(8.0, pageHeight - 55.0);
+      return Rect.fromLTWH(leftPos, topPos, 190, 44);
+    }
   }
 
   @override

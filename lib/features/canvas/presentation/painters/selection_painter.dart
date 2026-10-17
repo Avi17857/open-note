@@ -36,38 +36,38 @@ class SelectionPainter extends CustomPainter {
   }
 
   void _drawRotationHandle(Canvas canvas, Rect bounds, Paint borderPaint) {
-    final topCenter = bounds.topCenter;
     final handlePos = LassoService.getRotationHandlePosition(bounds);
+    final anchor = bounds.top < 36.0 ? bounds.bottomCenter : bounds.topCenter;
 
     // Stem line connecting box to rotation knob
     final stemPaint = Paint()
       ..color = const Color(0xFF007AFF)
       ..strokeWidth = 1.5;
-    canvas.drawLine(topCenter, handlePos, stemPaint);
+    canvas.drawLine(anchor, handlePos, stemPaint);
 
     // Subtle drop shadow
     final shadowPaint = Paint()
       ..color = const Color(0x33000000)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.0);
-    canvas.drawCircle(handlePos.translate(0, 1), 8.5, shadowPaint);
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5);
+    canvas.drawCircle(handlePos.translate(0, 1.5), 10.0, shadowPaint);
 
     // White circular fill
     final fillPaint = Paint()
       ..color = Colors.white
       ..style = PaintingStyle.fill;
-    canvas.drawCircle(handlePos, 8.5, fillPaint);
+    canvas.drawCircle(handlePos, 10.0, fillPaint);
 
     // Blue ring border
-    canvas.drawCircle(handlePos, 8.5, borderPaint);
+    canvas.drawCircle(handlePos, 10.0, borderPaint);
 
     // Curving rotate arrow glyph
     final arcPaint = Paint()
       ..color = const Color(0xFF007AFF)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.8
+      ..strokeWidth = 2.0
       ..strokeCap = StrokeCap.round;
     canvas.drawArc(
-      Rect.fromCircle(center: handlePos, radius: 4.5),
+      Rect.fromCircle(center: handlePos, radius: 5.5),
       -0.6,
       4.4,
       false,
