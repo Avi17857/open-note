@@ -386,6 +386,114 @@ void main() {
       expect(controller.strokes.length, 1);
       expect(controller.canUndo, isFalse);
     });
+
+    test('Lasso selection encloses strokes and calculates bounds', () {
+      final stroke1 = Stroke(
+        points: const [StrokePoint(50, 50), StrokePoint(60, 60)],
+        strokeWidth: 4.0,
+      );
+      final stroke2 = Stroke(
+        points: const [StrokePoint(300, 300), StrokePoint(350, 350)],
+        strokeWidth: 4.0,
+      );
+      controller.loadStrokes([stroke1, stroke2], clearHistory: true);
+
+      controller.setTool(ToolType.lasso);
+
+      // Draw lasso around stroke1
+      controller.onPointerDown(const Offset(20, 20));
+      controller.onPointerMove(const Offset(100, 20));
+      controller.onPointerMove(const Offset(100, 100));
+      controller.onPointerMove(const Offset(20, 100));
+      controller.onPointerUp(const Offset(20, 20));
+
+      expect(controller.hasSelection, isTrue);
+      expect(controller.selectedStrokes.length, 1);
+      expect(controller.selectedStrokes.first.points.first.dx, 50.0);
+      expect(controller.selectionBounds, isNotNull);
+    });
+
+    test('Lasso move translates selected strokes and supports undo/redo', () {
+      final stroke = Stroke(
+        points: const [StrokePoint(50, 50), StrokePoint(60, 60)],
+        strokeWidth: 4.0,
+      );
+      controller.loadStrokes([stroke], clearHistory: true);
+      controller.setTool(ToolType.lasso);
+
+      // Select stroke
+      controller.onPointerDown(const Offset(20, 20));
+      controller.onPointerMove(const Offset(100, 20));
+      controller.onPointerMove(const Offset(100, 100));
+      controller.onPointerMove(const Offset(20, 100));
+      controller.onPointerUp(const Offset(20, 20));
+      expect(controller.hasSelection, isTrue);
+
+      final initialX = controller.selectedStrokes.first.points.first.dx;
+
+      // Drag inside the selection box to move it by (+50, +50)
+      final center = controller.selectionBounds!.center;
+      controller.onPointerDown(center);
+      controller.onPointerMove(center + const Offset(50, 50));
+      controller.onPointerUp(center + const Offset(50, 50));
+
+      expect(
+        controller.selectedStrokes.first.points.first.dx,
+        closeTo(initialX + 50.0, 0.01),
+      );
+      expect(controller.canUndo, isTrue);
+
+      // Undo restores the stroke's initial position
+      controller.undo();
+      expect(controller.strokes.first.points.first.dx, closeTo(initialX, 0.01));
+
+      // Redo moves it back
+      controller.redo();
+      expect(
+        controller.strokes.first.points.first.dx,
+        closeTo(initialX + 50.0, 0.01),
+      );
+    });
+
+    test('Lasso duplicate, delete, and recolor actions work with undo', () {
+      final stroke = Stroke(
+        points: const [StrokePoint(50, 50), StrokePoint(60, 60)],
+        color: Colors.black,
+      );
+      controller.loadStrokes([stroke], clearHistory: true);
+      controller.setTool(ToolType.lasso);
+
+      // Select stroke
+      controller.onPointerDown(const Offset(20, 20));
+      controller.onPointerMove(const Offset(100, 20));
+      controller.onPointerMove(const Offset(100, 100));
+      controller.onPointerUp(const Offset(20, 20));
+      expect(controller.hasSelection, isTrue);
+
+      // 1. Recolor
+      controller.setColor(Colors.red);
+      expect(controller.selectedStrokes.first.color, Colors.red);
+      expect(controller.strokes.first.color, Colors.red);
+
+      // 2. Duplicate
+      controller.duplicateSelection();
+      expect(controller.strokes.length, 2);
+      expect(controller.hasSelection, isTrue);
+
+      // 3. Delete
+      controller.deleteSelection();
+      expect(controller.strokes.length, 1);
+      expect(controller.hasSelection, isFalse);
+
+      // Undo brings back duplicated stroke
+      controller.undo();
+      expect(controller.strokes.length, 2);
+
+      // Undo brings back original black color
+      controller.undo(); // undo duplicate
+      controller.undo(); // undo recolor
+      expect(controller.strokes.first.color, Colors.black);
+    });
   });
 
   group('EraserService Tests', () {

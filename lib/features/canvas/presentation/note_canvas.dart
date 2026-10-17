@@ -7,8 +7,11 @@ import 'package:open_note/features/canvas/models/tool_type.dart';
 import 'package:open_note/features/canvas/presentation/painters/active_stroke_painter.dart';
 import 'package:open_note/features/canvas/presentation/painters/completed_strokes_painter.dart';
 import 'package:open_note/features/canvas/presentation/painters/eraser_cursor_painter.dart';
+import 'package:open_note/features/canvas/presentation/painters/lasso_path_painter.dart';
 import 'package:open_note/features/canvas/presentation/painters/page_background_painter.dart';
+import 'package:open_note/features/canvas/presentation/painters/selection_painter.dart';
 import 'package:open_note/features/canvas/presentation/widgets/drawing_toolbar.dart';
+import 'package:open_note/features/canvas/presentation/widgets/selection_toolbar.dart';
 
 class NoteCanvas extends StatefulWidget {
   final CanvasController controller;
@@ -54,7 +57,8 @@ class _NoteCanvasState extends State<NoteCanvas> {
     return switch (widget.controller.activeTool) {
       ToolType.pen ||
       ToolType.fountainPen ||
-      ToolType.highlighter =>
+      ToolType.highlighter ||
+      ToolType.lasso =>
         SystemMouseCursors.precise,
       ToolType.strokeEraser || ToolType.areaEraser => SystemMouseCursors.click,
       ToolType.pan => SystemMouseCursors.grab,
@@ -237,6 +241,39 @@ class _NoteCanvasState extends State<NoteCanvas> {
                                       );
                                     },
                                   ),
+
+                                  // 7. Lasso in-progress freeform loop
+                                  ValueListenableBuilder<List<Offset>>(
+                                    valueListenable:
+                                        widget.controller.lassoPointsNotifier,
+                                    builder: (context, lassoPoints, _) {
+                                      if (lassoPoints.isEmpty) {
+                                        return const SizedBox.shrink();
+                                      }
+                                      return CustomPaint(
+                                        painter: LassoPathPainter(lassoPoints),
+                                      );
+                                    },
+                                  ),
+
+                                  // 8. Selection dashed bounding box and resize handles
+                                  if (widget.controller.hasSelection &&
+                                      widget.controller.selectionBounds != null)
+                                    CustomPaint(
+                                      painter: SelectionPainter(
+                                        bounds:
+                                            widget.controller.selectionBounds!,
+                                      ),
+                                    ),
+
+                                  // 9. Floating contextual toolbar for selected strokes
+                                  if (widget.controller.hasSelection &&
+                                      widget.controller.selectionBounds != null)
+                                    SelectionToolbar(
+                                      controller: widget.controller,
+                                      bounds:
+                                          widget.controller.selectionBounds!,
+                                    ),
                                 ],
                               ),
                             ),

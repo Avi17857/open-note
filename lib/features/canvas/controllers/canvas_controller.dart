@@ -7,6 +7,7 @@ import 'package:open_note/features/canvas/models/stroke.dart';
 import 'package:open_note/features/canvas/models/stroke_point.dart';
 import 'package:open_note/features/canvas/models/tool_type.dart';
 import 'package:open_note/features/canvas/services/eraser_service.dart';
+import 'package:open_note/features/canvas/services/lasso_service.dart';
 
 class CanvasController extends ChangeNotifier {
   List<Stroke> _strokes = [];
@@ -31,6 +32,18 @@ class CanvasController extends ChangeNotifier {
   Offset? _eraserTouchDownPos;
   List<Stroke>? _eraserGestureInitialStrokes;
   bool _eraserGestureDidModify = false;
+
+  // Selection / Lasso Tool State
+  final ValueNotifier<List<Offset>> lassoPointsNotifier =
+      ValueNotifier<List<Offset>>([]);
+  List<Stroke> _selectedStrokes = [];
+  Rect? _selectionBounds;
+  LassoHandle _activeLassoHandle = LassoHandle.none;
+  Offset? _lassoDragStartPos;
+  Rect? _lassoInitialBounds;
+  List<Stroke>? _lassoInitialSelectedStrokes;
+  List<Stroke>? _lassoPreTransformAllStrokes;
+  bool _lassoTransformDidModify = false;
 
   /// Dedicated notifier for the single stroke in-progress to avoid repainting
   /// completed strokes during pen-move events.
@@ -57,6 +70,10 @@ class CanvasController extends ChangeNotifier {
   bool get isStylusActive => _isStylusActive;
   bool get isMultiTouch => _isMultiTouch;
 
+  List<Stroke> get selectedStrokes => List.unmodifiable(_selectedStrokes);
+  bool get hasSelection => _selectedStrokes.isNotEmpty;
+  Rect? get selectionBounds => _selectionBounds;
+
   bool _isStylusButtonPressed(int buttons) {
     return (buttons & kPrimaryStylusButton != 0) ||
         (buttons & kSecondaryButton != 0) ||
@@ -65,6 +82,9 @@ class CanvasController extends ChangeNotifier {
 
   void setTool(ToolType tool) {
     if (_activeTool == tool) return;
+    if (_activeTool == ToolType.lasso) {
+      deselect();
+    }
     _activeTool = tool;
     _isDrawing = false;
     _eraserPendingTouch = false;
@@ -79,6 +99,10 @@ class CanvasController extends ChangeNotifier {
   }
 
   void setColor(Color color) {
+    if (hasSelection) {
+      recolorSelection(color);
+      return;
+    }
     if (_activeTool == ToolType.highlighter) {
       final adjusted = color.a >= 1.0 ? color.withValues(alpha: 0.38) : color;
       if (_highlighterColor == adjusted) return;
@@ -87,6 +111,65 @@ class CanvasController extends ChangeNotifier {
       if (_penColor == color) return;
       _penColor = color;
     }
+    notifyListeners();
+  }
+
+  void deselect() {
+    if (!hasSelection && lassoPointsNotifier.value.isEmpty) return;
+    _selectedStrokes = [];
+    _selectionBounds = null;
+    _activeLassoHandle = LassoHandle.none;
+    _lassoInitialSelectedStrokes = null;
+    _lassoPreTransformAllStrokes = null;
+    _lassoTransformDidModify = false;
+    lassoPointsNotifier.value = [];
+    notifyListeners();
+  }
+
+  void deleteSelection() {
+    if (!hasSelection) return;
+    _recordHistory();
+    final toRemove = _selectedStrokes.toSet();
+    _strokes.removeWhere((s) => toRemove.contains(s));
+    _selectedStrokes = [];
+    _selectionBounds = null;
+    _activeLassoHandle = LassoHandle.none;
+    _redoStack.clear();
+    notifyListeners();
+  }
+
+  void duplicateSelection() {
+    if (!hasSelection) return;
+    _recordHistory();
+    final duplicated = LassoService.translateStrokes(
+      _selectedStrokes,
+      const Offset(24, 24),
+    );
+    _strokes.addAll(duplicated);
+    _selectedStrokes = duplicated;
+    _selectionBounds = LassoService.computeSelectionBounds(duplicated);
+    _redoStack.clear();
+    notifyListeners();
+  }
+
+  void recolorSelection(Color color) {
+    if (!hasSelection) return;
+    _recordHistory();
+    final recolored =
+        _selectedStrokes.map((s) => s.copyWith(color: color)).toList();
+    final oldSelectedSet = _selectedStrokes.toSet();
+    final List<Stroke> newStrokes = [];
+    int selIdx = 0;
+    for (final s in _strokes) {
+      if (oldSelectedSet.contains(s)) {
+        newStrokes.add(recolored[selIdx++]);
+      } else {
+        newStrokes.add(s);
+      }
+    }
+    _strokes = newStrokes;
+    _selectedStrokes = recolored;
+    _redoStack.clear();
     notifyListeners();
   }
 
@@ -198,7 +281,46 @@ class CanvasController extends ChangeNotifier {
       return;
     }
 
-    // 5. Inking
+    // 5. Lasso handling
+    if (_activeTool == ToolType.lasso) {
+      _drawingPointerId = pointer;
+      if (hasSelection && _selectionBounds != null) {
+        final showBelow = _selectionBounds!.top < 60;
+        final topPos = showBelow
+            ? _selectionBounds!.bottom + 8
+            : _selectionBounds!.top - 56;
+        final centerLeft = _selectionBounds!.center.dx;
+        final toolbarRect = Rect.fromLTWH(centerLeft - 80, topPos, 160, 50);
+
+        if (toolbarRect.contains(localPosition)) {
+          // Tap is on the floating action toolbar: do not disrupt button clicks
+          return;
+        }
+
+        final handle = LassoService.hitTestHandle(
+          localPosition,
+          _selectionBounds!,
+        );
+        if (handle != LassoHandle.none) {
+          _activeLassoHandle = handle;
+          _lassoDragStartPos = localPosition;
+          _lassoInitialBounds = _selectionBounds;
+          _lassoInitialSelectedStrokes = List.from(_selectedStrokes);
+          _lassoPreTransformAllStrokes = List.from(_strokes);
+          _lassoTransformDidModify = false;
+          return;
+        } else {
+          deselect();
+        }
+      }
+
+      _activeLassoHandle = LassoHandle.none;
+      _lassoDragStartPos = null;
+      lassoPointsNotifier.value = [localPosition];
+      return;
+    }
+
+    // 6. Inking
     _drawingPointerId = pointer;
     _isDrawing = true;
     final point = StrokePoint(
@@ -232,6 +354,61 @@ class CanvasController extends ChangeNotifier {
       eraserPointerNotifier.value = localPosition;
       _eraserPendingTouch = false;
       _handleEraser(localPosition);
+      return;
+    }
+
+    // Lasso Move or Scale or Drawing loop
+    if (_activeTool == ToolType.lasso) {
+      if (_activeLassoHandle != LassoHandle.none &&
+          _lassoDragStartPos != null &&
+          _lassoInitialBounds != null &&
+          _lassoInitialSelectedStrokes != null) {
+        _lassoTransformDidModify = true;
+        final delta = localPosition - _lassoDragStartPos!;
+
+        late final Rect updatedBounds;
+        late final List<Stroke> updatedSelected;
+
+        if (_activeLassoHandle == LassoHandle.move) {
+          updatedBounds = _lassoInitialBounds!.shift(delta);
+          updatedSelected = LassoService.translateStrokes(
+            _lassoInitialSelectedStrokes!,
+            delta,
+          );
+        } else {
+          updatedBounds = LassoService.calculateTransformedBounds(
+            _lassoInitialBounds!,
+            _activeLassoHandle,
+            delta,
+          );
+          updatedSelected = LassoService.scaleStrokes(
+            _lassoInitialSelectedStrokes!,
+            _lassoInitialBounds!,
+            updatedBounds,
+          );
+        }
+
+        final oldSelectedSet = _selectedStrokes.toSet();
+        final List<Stroke> newStrokes = [];
+        int selIdx = 0;
+        for (final s in _strokes) {
+          if (oldSelectedSet.contains(s)) {
+            newStrokes.add(updatedSelected[selIdx++]);
+          } else {
+            newStrokes.add(s);
+          }
+        }
+        _strokes = newStrokes;
+        _selectedStrokes = updatedSelected;
+        _selectionBounds = updatedBounds;
+        notifyListeners();
+        return;
+      }
+
+      final current = lassoPointsNotifier.value;
+      if (current.isNotEmpty && (current.last - localPosition).distance > 2.0) {
+        lassoPointsNotifier.value = [...current, localPosition];
+      }
       return;
     }
 
@@ -293,6 +470,43 @@ class CanvasController extends ChangeNotifier {
       return;
     }
 
+    if (_activeTool == ToolType.lasso) {
+      if (_lassoTransformDidModify && _lassoPreTransformAllStrokes != null) {
+        _recordSnapshot(_lassoPreTransformAllStrokes!);
+        _redoStack.clear();
+        _lassoPreTransformAllStrokes = null;
+        _lassoInitialSelectedStrokes = null;
+        _lassoInitialBounds = null;
+        _lassoTransformDidModify = false;
+        _activeLassoHandle = LassoHandle.none;
+        notifyListeners();
+        return;
+      }
+
+      _lassoPreTransformAllStrokes = null;
+      _lassoInitialSelectedStrokes = null;
+      _lassoInitialBounds = null;
+      _lassoTransformDidModify = false;
+      _activeLassoHandle = LassoHandle.none;
+
+      final points = lassoPointsNotifier.value;
+      if (points.length >= 3) {
+        final selected = LassoService.findSelectedStrokes(_strokes, points);
+        if (selected.isNotEmpty) {
+          _selectedStrokes = selected;
+          _selectionBounds = LassoService.computeSelectionBounds(selected);
+        } else {
+          deselect();
+        }
+      } else {
+        deselect();
+      }
+
+      lassoPointsNotifier.value = [];
+      notifyListeners();
+      return;
+    }
+
     if (!_isDrawing) return;
 
     final rawPoints = currentStrokeNotifier.value;
@@ -336,6 +550,18 @@ class CanvasController extends ChangeNotifier {
     }
     _eraserGestureInitialStrokes = null;
     _eraserGestureDidModify = false;
+
+    if (_lassoTransformDidModify && _lassoPreTransformAllStrokes != null) {
+      _recordSnapshot(_lassoPreTransformAllStrokes!);
+      _redoStack.clear();
+    }
+    _lassoPreTransformAllStrokes = null;
+    _lassoInitialSelectedStrokes = null;
+    _lassoInitialBounds = null;
+    _lassoTransformDidModify = false;
+    _activeLassoHandle = LassoHandle.none;
+    lassoPointsNotifier.value = [];
+
     if (_activePointers.isEmpty) {
       _isMultiTouch = false;
     }
@@ -399,6 +625,18 @@ class CanvasController extends ChangeNotifier {
   }
 
   void undo() {
+    // If an in-progress lasso transform modified strokes, commit snapshot first
+    if (_lassoTransformDidModify && _lassoPreTransformAllStrokes != null) {
+      _recordSnapshot(_lassoPreTransformAllStrokes!);
+      _redoStack.clear();
+      _lassoPreTransformAllStrokes = null;
+      _lassoInitialSelectedStrokes = null;
+      _lassoInitialBounds = null;
+      _lassoTransformDidModify = false;
+      _activeLassoHandle = LassoHandle.none;
+    }
+    deselect();
+
     // If an in-progress eraser gesture modified strokes before pointer-up, commit snapshot first
     if (_eraserGestureDidModify && _eraserGestureInitialStrokes != null) {
       _recordSnapshot(_eraserGestureInitialStrokes!);
@@ -413,6 +651,7 @@ class CanvasController extends ChangeNotifier {
   }
 
   void redo() {
+    deselect();
     if (_redoStack.isEmpty) return;
     _undoStack.add(List.from(_strokes));
     _strokes = _redoStack.removeLast();
@@ -420,6 +659,7 @@ class CanvasController extends ChangeNotifier {
   }
 
   void clear() {
+    deselect();
     if (_strokes.isEmpty) return;
     _recordHistory();
     _strokes = [];
@@ -442,6 +682,7 @@ class CanvasController extends ChangeNotifier {
   void dispose() {
     currentStrokeNotifier.dispose();
     eraserPointerNotifier.dispose();
+    lassoPointsNotifier.dispose();
     super.dispose();
   }
 }

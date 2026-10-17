@@ -165,8 +165,78 @@ class DrawingToolbar extends StatelessWidget {
                   const SizedBox(width: 12),
                 ],
 
-                // Color Palette Dots & Custom Color Picker (changes between pen & highlighter)
-                if (isDrawing) ...[
+                // Lasso Selection Controls
+                if (activeTool == ToolType.lasso) ...[
+                  if (controller.hasSelection) ...[
+                    Tooltip(
+                      message: 'Duplicate Selection',
+                      child: IconButton(
+                        icon: const Icon(Icons.copy_rounded, size: 20),
+                        onPressed: controller.duplicateSelection,
+                      ),
+                    ),
+                    Tooltip(
+                      message: 'Delete Selection',
+                      child: IconButton(
+                        icon: Icon(
+                          Icons.delete_outline_rounded,
+                          size: 20,
+                          color: Colors.red.shade700,
+                        ),
+                        onPressed: controller.deleteSelection,
+                      ),
+                    ),
+                    Tooltip(
+                      message: 'Deselect',
+                      child: IconButton(
+                        icon: const Icon(Icons.close_rounded, size: 20),
+                        onPressed: controller.deselect,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const VerticalDivider(width: 1, indent: 8, endIndent: 8),
+                    const SizedBox(width: 8),
+                  ] else ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.blue.shade200),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.touch_app_outlined,
+                            size: 16,
+                            color: Colors.blue.shade700,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Circle strokes to select',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.blue.shade800,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const VerticalDivider(width: 1, indent: 8, endIndent: 8),
+                    const SizedBox(width: 12),
+                  ],
+                ],
+
+                // Color Palette Dots & Custom Color Picker (for drawing and recoloring selection)
+                if (isDrawing ||
+                    (activeTool == ToolType.lasso &&
+                        controller.hasSelection)) ...[
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [

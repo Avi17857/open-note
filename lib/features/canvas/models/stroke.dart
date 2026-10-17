@@ -16,6 +16,20 @@ class Stroke {
     this.toolType = ToolType.pen,
   });
 
+  Stroke copyWith({
+    List<StrokePoint>? points,
+    Color? color,
+    double? strokeWidth,
+    ToolType? toolType,
+  }) {
+    return Stroke(
+      points: points ?? this.points,
+      color: color ?? this.color,
+      strokeWidth: strokeWidth ?? this.strokeWidth,
+      toolType: toolType ?? this.toolType,
+    );
+  }
+
   Rect get bounds {
     if (_cachedBounds != null) return _cachedBounds!;
     if (points.isEmpty) {

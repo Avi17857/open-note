@@ -6,6 +6,7 @@ enum ToolType {
   highlighter,
   strokeEraser,
   areaEraser,
+  lasso,
   pan,
 }
 
@@ -17,6 +18,7 @@ extension ToolTypeExtension on ToolType {
       ToolType.highlighter => 'Highlighter',
       ToolType.strokeEraser => 'Stroke Eraser',
       ToolType.areaEraser => 'Area Eraser',
+      ToolType.lasso => 'Lasso Select',
       ToolType.pan => 'Pan / Hand',
     };
   }
@@ -28,6 +30,7 @@ extension ToolTypeExtension on ToolType {
       ToolType.highlighter => Icons.brush,
       ToolType.strokeEraser => Icons.auto_fix_normal,
       ToolType.areaEraser => Icons.cleaning_services,
+      ToolType.lasso => Icons.gesture,
       ToolType.pan => Icons.pan_tool_outlined,
     };
   }
@@ -39,4 +42,6 @@ extension ToolTypeExtension on ToolType {
       this == ToolType.pen ||
       this == ToolType.fountainPen ||
       this == ToolType.highlighter;
+
+  bool get isLasso => this == ToolType.lasso;
 }
