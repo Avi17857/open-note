@@ -125,6 +125,7 @@ class CanvasController extends ChangeNotifier {
     if (_pages.length <= 1) return;
     _recordHistory();
     _redoStack.clear();
+    deselect();
     final updated = List<NotePage>.from(_pages);
     updated.removeAt(index);
     for (int i = 0; i < updated.length; i++) {
@@ -310,9 +311,54 @@ class CanvasController extends ChangeNotifier {
     }
   }
 
-  void commitTextBoxTransform() {
+  void transferTextBoxIfNeeded(String id) {
+    if (_pages.length <= 1) return;
+
+    int sourcePageIndex = -1;
+    NoteTextBox? box;
+    for (int i = 0; i < _pages.length; i++) {
+      for (final b in _pages[i].textBoxes) {
+        if (b.id == id) {
+          sourcePageIndex = i;
+          box = b;
+          break;
+        }
+      }
+      if (box != null) break;
+    }
+    if (box == null || sourcePageIndex == -1) return;
+
+    final centerGlobalY = AppConstants.pageHeaderHeight +
+        sourcePageIndex * AppConstants.pagePitch +
+        box.position.dy +
+        (box.height ?? 44.0) / 2;
+    final targetPageIndex = (centerGlobalY / AppConstants.pagePitch)
+        .floor()
+        .clamp(0, _pages.length - 1);
+
+    if (targetPageIndex != sourcePageIndex) {
+      final yShift =
+          (sourcePageIndex - targetPageIndex) * AppConstants.pagePitch;
+      _pages[sourcePageIndex].textBoxes =
+          _pages[sourcePageIndex].textBoxes.where((b) => b.id != id).toList();
+
+      box.position = Offset(box.position.dx, box.position.dy + yShift);
+      _pages[targetPageIndex].textBoxes = [
+        ..._pages[targetPageIndex].textBoxes,
+        box,
+      ];
+      _activePageIndex = targetPageIndex;
+      notifyListeners();
+    }
+  }
+
+  void beginTextBoxTransform() {
     _recordHistory();
     _redoStack.clear();
+  }
+
+  void commitTextBoxTransform() {
+    notifyListeners();
   }
 
   void deleteTextBox(String id) {
@@ -913,6 +959,49 @@ class CanvasController extends ChangeNotifier {
       if (_lassoTransformDidModify && _lassoPreTransformAllStrokes != null) {
         _recordSnapshot(_lassoPreTransformAllStrokes!);
         _redoStack.clear();
+
+        // Cross-page transfer if moving selection across page boundaries
+        if (_activeLassoHandle == LassoHandle.move &&
+            _selectionBounds != null &&
+            _pages.length > 1) {
+          final sourcePageIndex = _activePageIndex;
+          final centerGlobalY = AppConstants.pageHeaderHeight +
+              sourcePageIndex * AppConstants.pagePitch +
+              _selectionBounds!.center.dy;
+          final targetPageIndex = (centerGlobalY / AppConstants.pagePitch)
+              .floor()
+              .clamp(0, _pages.length - 1);
+
+          if (targetPageIndex != sourcePageIndex) {
+            final yShift =
+                (sourcePageIndex - targetPageIndex) * AppConstants.pagePitch;
+            final transferredStrokes = LassoService.translateStrokes(
+              _selectedStrokes,
+              Offset(0.0, yShift),
+            );
+            _selectionBounds = _selectionBounds!.shift(Offset(0.0, yShift));
+
+            // Remove moved strokes from source page
+            final selIndicesSet = _lassoSelectedIndices.toSet();
+            final remainingSourceStrokes = <Stroke>[];
+            for (int i = 0; i < _lassoPreTransformAllStrokes!.length; i++) {
+              if (!selIndicesSet.contains(i)) {
+                remainingSourceStrokes.add(_lassoPreTransformAllStrokes![i]);
+              }
+            }
+            _pages[sourcePageIndex].strokes = remainingSourceStrokes;
+
+            // Append transferred strokes to target page
+            _pages[targetPageIndex].strokes = [
+              ..._pages[targetPageIndex].strokes,
+              ...transferredStrokes,
+            ];
+
+            _selectedStrokes = transferredStrokes;
+            _activePageIndex = targetPageIndex;
+          }
+        }
+
         _lassoPreTransformAllStrokes = null;
         _lassoInitialSelectedStrokes = null;
         _lassoInitialBounds = null;

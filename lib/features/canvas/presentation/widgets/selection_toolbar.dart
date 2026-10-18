@@ -22,25 +22,28 @@ class SelectionToolbar extends StatelessWidget {
   static Rect getToolbarRect(
     Rect bounds, {
     double rotationAngle = 0.0,
-    double pageWidth = 600.0,
-    double pageHeight = 850.0,
+    double? pageWidth,
+    double? pageHeight,
   }) {
     final effectiveBounds = rotationAngle == 0.0
         ? bounds
         : LassoService.computeRotatedEnclosingBounds(bounds, rotationAngle);
     final centerLeft = effectiveBounds.center.dx;
-    final leftPos = (centerLeft - 95).clamp(8.0, pageWidth - 190.0 - 8.0);
+    final leftPos = pageWidth != null
+        ? (centerLeft - 95).clamp(8.0, pageWidth - 190.0 - 8.0)
+        : centerLeft - 95;
 
     if (effectiveBounds.top >= 36.0) {
-      // Default: position below selection bounds (complete clearance from rotation knob)
-      if (effectiveBounds.bottom + 14.0 <= pageHeight - 55.0) {
-        return Rect.fromLTWH(leftPos, effectiveBounds.bottom + 14.0, 190, 44);
-      } else {
-        // Selection near bottom: position well above rotation knob
+      if (pageHeight != null &&
+          effectiveBounds.bottom + 14.0 > pageHeight - 55.0) {
         return Rect.fromLTWH(leftPos, effectiveBounds.top - 82.0, 190, 44);
+      } else {
+        return Rect.fromLTWH(leftPos, effectiveBounds.bottom + 14.0, 190, 44);
       }
     } else {
-      final topPos = (effectiveBounds.bottom + 58.0).clamp(8.0, pageHeight - 55.0);
+      final topPos = pageHeight != null
+          ? (effectiveBounds.bottom + 58.0).clamp(8.0, pageHeight - 55.0)
+          : effectiveBounds.bottom + 14.0;
       return Rect.fromLTWH(leftPos, topPos, 190, 44);
     }
   }

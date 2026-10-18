@@ -11,6 +11,7 @@ class TextBoxWidget extends StatefulWidget {
   final CanvasController controller;
   final bool isSelected;
   final RichTextEditingController richController;
+  final Offset? boardPosition;
 
   const TextBoxWidget({
     super.key,
@@ -18,6 +19,7 @@ class TextBoxWidget extends StatefulWidget {
     required this.controller,
     required this.isSelected,
     required this.richController,
+    this.boardPosition,
   });
 
   @override
@@ -79,11 +81,6 @@ class _TextBoxWidgetState extends State<TextBoxWidget> {
     } else {
       if (widget.controller.activeTextBoxId == widget.textBox.id) {
         widget.controller.setActiveRichTextController(null);
-        if (widget.textBox.text.trim().isEmpty) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            widget.controller.deleteTextBox(widget.textBox.id);
-          });
-        }
       }
     }
   }
@@ -100,9 +97,12 @@ class _TextBoxWidgetState extends State<TextBoxWidget> {
     final isSelected = widget.isSelected;
     final box = widget.textBox;
 
+    final renderLeft = widget.boardPosition?.dx ?? box.position.dx;
+    final renderTop = widget.boardPosition?.dy ?? box.position.dy;
+
     return Positioned(
-      left: box.position.dx,
-      top: box.position.dy,
+      left: renderLeft,
+      top: renderTop,
       width: box.width,
       child: Material(
         color: Colors.transparent,
@@ -135,6 +135,7 @@ class _TextBoxWidgetState extends State<TextBoxWidget> {
                       child: TextField(
                         controller: widget.richController,
                         focusNode: _focusNode,
+                        autofocus: widget.isSelected,
                         maxLines: null,
                         keyboardType: TextInputType.multiline,
                         style: const TextStyle(
@@ -167,6 +168,7 @@ class _TextBoxWidgetState extends State<TextBoxWidget> {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onPanStart: (details) {
+        widget.controller.beginTextBoxTransform();
         setState(() => _isDragging = true);
         _dragStartPos = details.globalPosition;
         _dragInitialX = widget.textBox.position.dx;
@@ -175,14 +177,8 @@ class _TextBoxWidgetState extends State<TextBoxWidget> {
       onPanUpdate: (details) {
         if (!_isDragging || _dragStartPos == null) return;
         final delta = details.globalPosition - _dragStartPos!;
-        final newX = (_dragInitialX! + delta.dx).clamp(
-          8.0,
-          AppConstants.defaultPageSize.width - widget.textBox.width - 8.0,
-        );
-        final newY = (_dragInitialY! + delta.dy).clamp(
-          8.0,
-          AppConstants.defaultPageSize.height - 40.0,
-        );
+        final newX = _dragInitialX! + delta.dx;
+        final newY = _dragInitialY! + delta.dy;
         widget.controller.updateTextBoxPosition(
           widget.textBox.id,
           Offset(newX, newY),
@@ -191,6 +187,7 @@ class _TextBoxWidgetState extends State<TextBoxWidget> {
       onPanEnd: (_) {
         setState(() => _isDragging = false);
         _dragStartPos = null;
+        widget.controller.transferTextBoxIfNeeded(widget.textBox.id);
         widget.controller.commitTextBoxTransform();
       },
       child: Container(
@@ -221,6 +218,7 @@ class _TextBoxWidgetState extends State<TextBoxWidget> {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onPanStart: (details) {
+        widget.controller.beginTextBoxTransform();
         setState(() => _isResizing = true);
         _resizeStartX = details.globalPosition.dx;
         _resizeInitialWidth = widget.textBox.width;
