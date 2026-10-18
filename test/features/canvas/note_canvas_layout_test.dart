@@ -4,8 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:open_note/features/canvas/controllers/canvas_controller.dart';
+import 'package:open_note/features/canvas/models/stroke.dart';
+import 'package:open_note/features/canvas/models/stroke_point.dart';
 import 'package:open_note/features/canvas/models/tool_type.dart';
 import 'package:open_note/features/canvas/presentation/note_canvas.dart';
+import 'package:open_note/features/canvas/presentation/widgets/selection_toolbar.dart';
 
 void main() {
   testWidgets('NoteCanvas does not overflow in viewport smaller than page height',
@@ -460,6 +463,65 @@ void main() {
     // Stylus stroke was completed successfully
     expect(controller.pages[0].strokes.length, equals(1));
     expect(controller.pages[0].strokes.first.points.length, greaterThan(1));
+  });
+
+  testWidgets('Floating selection toolbar works when content is moved outside the page into pasteboard', (tester) async {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final controller = CanvasController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: NoteCanvas(controller: controller),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 1. Draw a stroke that lives far out in the left pasteboard (outside page bounds, x = -100)
+    final strokeInPasteboard = Stroke(
+      points: const [StrokePoint(-120, 100), StrokePoint(-50, 100)],
+      strokeWidth: 4.0,
+    );
+    controller.loadStrokes([strokeInPasteboard], clearHistory: true);
+    controller.setTool(ToolType.lasso);
+
+    // 2. Select it with lasso
+    controller.onPointerDown(const Offset(-85, 100));
+    controller.onPointerUp(const Offset(-85, 100));
+    await tester.pumpAndSettle();
+
+    expect(controller.hasSelection, isTrue);
+    expect(controller.selectedStrokes.first, strokeInPasteboard);
+    expect(controller.selectionBounds!.center.dx, lessThan(0.0)); // Outside page in pasteboard!
+
+    // The floating selection toolbar should be visible
+    expect(find.byType(SelectionToolbar), findsOneWidget);
+    final dupBtn = find.descendant(of: find.byType(SelectionToolbar), matching: find.byIcon(Icons.copy_rounded));
+    expect(dupBtn, findsOneWidget);
+
+    // 3. Tap the Duplicate button on the toolbar
+    await tester.tap(dupBtn);
+    await tester.pumpAndSettle();
+
+    // Duplicate should have created a second stroke in the pasteboard!
+    expect(controller.strokes.length, 2);
+    expect(controller.hasSelection, isTrue);
+
+    // 4. Tap the Rotate 90° button on the toolbar
+    final rotateBtn = find.descendant(of: find.byType(SelectionToolbar), matching: find.byIcon(Icons.rotate_right_rounded));
+    await tester.tap(rotateBtn);
+    await tester.pumpAndSettle();
+    expect(controller.selectionRotation, closeTo(pi / 2, 0.01));
+
+    // 5. Tap the Delete button on the toolbar
+    final deleteBtn = find.descendant(of: find.byType(SelectionToolbar), matching: find.byIcon(Icons.delete_outline_rounded));
+    await tester.tap(deleteBtn);
+    await tester.pumpAndSettle();
+    expect(controller.strokes.length, 1);
+    expect(controller.hasSelection, isFalse);
   });
 }
 

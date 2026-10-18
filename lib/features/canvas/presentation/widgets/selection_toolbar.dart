@@ -7,12 +7,14 @@ class SelectionToolbar extends StatelessWidget {
   final CanvasController controller;
   final Rect bounds;
   final double rotationAngle;
+  final Offset? screenPosition;
 
   const SelectionToolbar({
     super.key,
     required this.controller,
     required this.bounds,
     this.rotationAngle = 0.0,
+    this.screenPosition,
   });
 
   /// Computes the bounding rectangle of the floating toolbar relative to page bounds.
@@ -50,11 +52,16 @@ class SelectionToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final rect = getToolbarRect(bounds, rotationAngle: rotationAngle);
+    final (double left, double top) = screenPosition != null
+        ? (screenPosition!.dx, screenPosition!.dy)
+        : () {
+            final rect = getToolbarRect(bounds, rotationAngle: rotationAngle);
+            return (rect.left, rect.top);
+          }();
 
     return Positioned(
-      top: rect.top,
-      left: rect.left,
+      top: top,
+      left: left,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () {}, // Absorbs taps so they do not fall through to the canvas

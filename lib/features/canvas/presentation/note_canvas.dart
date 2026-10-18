@@ -650,7 +650,6 @@ class _NoteCanvasState extends State<NoteCanvas>
                           globalBounds,
                           rotationAngle:
                               widget.controller.selectionRotation,
-                          pageWidth: AppConstants.defaultPageSize.width,
                         );
                         if (handle != LassoHandle.none ||
                             toolbarRect.contains(scenePos)) {
@@ -924,6 +923,10 @@ class _NoteCanvasState extends State<NoteCanvas>
                               widget.controller.activePageIndex,
                             ),
                             _buildFloatingZoomControls(scale, viewportSize.width),
+                            if (widget.controller.hasSelection &&
+                                widget.controller.selectionBounds != null &&
+                                !widget.controller.isTransforming)
+                              _buildFloatingSelectionToolbar(matrix, viewportSize),
                           ],
                         );
                       },
@@ -1196,16 +1199,40 @@ class _NoteCanvasState extends State<NoteCanvas>
               ),
             ),
           ),
-
-          // 3. Floating Contextual Toolbar
-          if (!widget.controller.isTransforming)
-            SelectionToolbar(
-              controller: widget.controller,
-              bounds: globalBounds,
-              rotationAngle: widget.controller.selectionRotation,
-            ),
         ],
       ),
+    );
+  }
+
+  /// Floating selection contextual toolbar rendered in viewport coordinates so that
+  /// it is always 100% clickable anywhere on screen (both on-page and in the pasteboard)
+  /// and maintains standard touch-target sizing without page boundary clipping.
+  Widget _buildFloatingSelectionToolbar(Matrix4 matrix, Size viewportSize) {
+    final activePageIdx = widget.controller.activePageIndex;
+    final canvasOrigin = Offset(
+      0.0,
+      AppConstants.pageHeaderHeight + activePageIdx * AppConstants.pagePitch,
+    );
+    final globalBounds = widget.controller.selectionBounds!.shift(canvasOrigin);
+    final sceneToolbarRect = SelectionToolbar.getToolbarRect(
+      globalBounds,
+      rotationAngle: widget.controller.selectionRotation,
+    );
+
+    final screenTopLeft =
+        MatrixUtils.transformPoint(matrix, sceneToolbarRect.topLeft);
+    final clampedX = screenTopLeft.dx
+        .clamp(8.0, max(8.0, viewportSize.width - 200.0))
+        .toDouble();
+    final clampedY = screenTopLeft.dy
+        .clamp(8.0, max(8.0, viewportSize.height - 56.0))
+        .toDouble();
+
+    return SelectionToolbar(
+      controller: widget.controller,
+      bounds: globalBounds,
+      rotationAngle: widget.controller.selectionRotation,
+      screenPosition: Offset(clampedX, clampedY),
     );
   }
 }

@@ -716,7 +716,6 @@ class CanvasController extends ChangeNotifier {
         final toolbarRect = SelectionToolbar.getToolbarRect(
           _selectionBounds!,
           rotationAngle: _selectionRotation,
-          pageWidth: AppConstants.defaultPageSize.width,
         );
 
         if (toolbarRect.contains(localPosition)) {
