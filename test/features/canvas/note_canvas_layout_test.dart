@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -329,6 +330,136 @@ void main() {
 
     // Page 1 is back in view, indicator should disappear
     expect(find.byKey(const Key('back_to_page_indicator')), findsNothing);
+  });
+
+  testWidgets('Mobile viewport fits page width at 100% on initial load and Reset View', (tester) async {
+    // 390x844 (standard mobile phone viewport like iPhone 13/14)
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final controller = CanvasController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: NoteCanvas(controller: controller),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // The zoom percentage should be 100%
+    expect(find.text('100%'), findsOneWidget);
+
+    final iv = tester.widget<InteractiveViewer>(find.byType(InteractiveViewer));
+    final matrix = iv.transformationController!.value;
+    final sx = matrix.storage[0];
+    final sy = matrix.storage[1];
+    final scale = sqrt(sx * sx + sy * sy);
+
+    // Expected baseScale: 390 / 600 = 0.65
+    // Page width on screen = 600 * 0.65 = 390px, completely filling screen width
+    expect(scale, closeTo(0.65, 0.01));
+    expect(matrix.storage[12], closeTo(0.0, 0.5)); // Page left edge starts at x = 0
+
+    // Zoom in with (+) button
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pumpAndSettle();
+    expect(find.text('120%'), findsOneWidget);
+
+    // Tap Reset View button (fit screen)
+    await tester.tap(find.byKey(const Key('reset_view_button')));
+    await tester.pumpAndSettle();
+
+    // Should return to 100% scale and fill screen width
+    expect(find.text('100%'), findsOneWidget);
+    final resetMatrix = iv.transformationController!.value;
+    final resetScale = sqrt(resetMatrix.storage[0] * resetMatrix.storage[0] + resetMatrix.storage[1] * resetMatrix.storage[1]);
+    expect(resetScale, closeTo(0.65, 0.01));
+    expect(resetMatrix.storage[12], closeTo(0.0, 0.5));
+  });
+
+  testWidgets('Two-finger touch pinch-to-zoom scales canvas without leaving stray strokes', (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final controller = CanvasController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: NoteCanvas(controller: controller),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final iv = tester.widget<InteractiveViewer>(find.byType(InteractiveViewer));
+    final initialScale = iv.transformationController!.value.storage[0];
+
+    // Place finger 1 down at (150, 400)
+    final finger1 = await tester.startGesture(const Offset(150, 400), pointer: 1, kind: PointerDeviceKind.touch);
+    await tester.pump(const Duration(milliseconds: 20));
+
+    // Place finger 2 down at (250, 400)
+    final finger2 = await tester.startGesture(const Offset(250, 400), pointer: 2, kind: PointerDeviceKind.touch);
+    await tester.pump(const Duration(milliseconds: 20));
+
+    // Pinch apart to zoom in (finger 1 moves to 100, finger 2 moves to 300)
+    await finger1.moveTo(const Offset(100, 400));
+    await finger2.moveTo(const Offset(300, 400));
+    await tester.pump(const Duration(milliseconds: 20));
+
+    // Release fingers
+    await finger1.up();
+    await finger2.up();
+    await tester.pumpAndSettle();
+
+    final finalScale = iv.transformationController!.value.storage[0];
+
+    // Scale should have increased due to pinch out
+    expect(finalScale, greaterThan(initialScale));
+
+    // No accidental stroke should have been drawn from finger 1 or finger 2
+    expect(controller.pages[0].strokes, isEmpty);
+  });
+
+  testWidgets('Stylus drawing palm rejection ignores touch pointer during active inking', (tester) async {
+    tester.view.physicalSize = const Size(600, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final controller = CanvasController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: NoteCanvas(controller: controller),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Stylus drawing down
+    final stylus = await tester.startGesture(const Offset(300, 200), pointer: 1, kind: PointerDeviceKind.stylus);
+    await tester.pump(const Duration(milliseconds: 20));
+    await stylus.moveBy(const Offset(50, 50));
+    await tester.pump(const Duration(milliseconds: 20));
+
+    // Palm rests on screen (touch event)
+    final palm = await tester.startGesture(const Offset(450, 350), pointer: 2, kind: PointerDeviceKind.touch);
+    await tester.pump(const Duration(milliseconds: 20));
+
+    // Stylus continues drawing
+    await stylus.moveBy(const Offset(50, 50));
+    await tester.pump(const Duration(milliseconds: 20));
+
+    await stylus.up();
+    await palm.up();
+    await tester.pumpAndSettle();
+
+    // Stylus stroke was completed successfully
+    expect(controller.pages[0].strokes.length, equals(1));
+    expect(controller.pages[0].strokes.first.points.length, greaterThan(1));
   });
 }
 

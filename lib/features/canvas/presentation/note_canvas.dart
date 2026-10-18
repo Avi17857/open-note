@@ -48,10 +48,26 @@ class _NoteCanvasState extends State<NoteCanvas>
       TransformationController();
   final Map<String, RichTextEditingController> _textControllers = {};
 
+  final Map<int, Offset> _activePointers = {};
+  int? _primaryDrawingPointer;
+  PointerDeviceKind? _primaryPointerKind;
+  bool _isPinching = false;
+  double _initialPinchDistance = 0.0;
+  Offset _initialPinchFocal = Offset.zero;
+  Matrix4 _initialPinchMatrix = Matrix4.identity();
+
   static double _getScale(Matrix4 matrix) {
     final sx = matrix.storage[0];
     final sy = matrix.storage[1];
     return sqrt(sx * sx + sy * sy);
+  }
+
+  static double _getBaseScale(double viewportWidth) {
+    if (viewportWidth <= 0) return 1.0;
+    if (viewportWidth < AppConstants.defaultPageSize.width) {
+      return viewportWidth / AppConstants.defaultPageSize.width;
+    }
+    return 1.0;
   }
 
   late final AnimationController _animController;
@@ -80,11 +96,12 @@ class _NoteCanvasState extends State<NoteCanvas>
   Matrix4 _clampTransformation(Matrix4 matrix, Size viewportSize) {
     if (viewportSize.width <= 0 || viewportSize.height <= 0) return matrix;
 
+    final baseScale = _getBaseScale(viewportSize.width);
+    final minScale = AppConstants.minScale * baseScale;
+    final maxScale = AppConstants.maxScale * baseScale;
+
     final currentScale = _getScale(matrix);
-    final scale = currentScale.clamp(
-      AppConstants.minScale,
-      AppConstants.maxScale,
-    );
+    final scale = currentScale.clamp(minScale, maxScale);
     final tx = matrix.storage[12];
     final ty = matrix.storage[13];
 
@@ -103,10 +120,10 @@ class _NoteCanvasState extends State<NoteCanvas>
     );
     final clampedTy = ty.clamp(minTy, maxTy).toDouble();
 
-    // Horizontal boundary clamping (centered page +/- 450px pasteboard margin)
-    final centerX =
-        (viewportSize.width - scale * AppConstants.defaultPageSize.width) / 2.0;
-    final maxHorizontalMargin = 450.0 * scale;
+    // Horizontal boundary clamping (centered page +/- margin)
+    final pageScreenWidth = scale * AppConstants.defaultPageSize.width;
+    final centerX = (viewportSize.width - pageScreenWidth) / 2.0;
+    final maxHorizontalMargin = max(200.0, 450.0 * scale);
     final minTx = centerX - maxHorizontalMargin;
     final maxTx = centerX + maxHorizontalMargin;
     final clampedTx = tx.clamp(min(minTx, maxTx), max(minTx, maxTx)).toDouble();
@@ -155,10 +172,12 @@ class _NoteCanvasState extends State<NoteCanvas>
     final RenderBox? box = context.findRenderObject() as RenderBox?;
     if (box != null && box.hasSize) {
       final viewportWidth = box.size.width;
+      final baseScale = _getBaseScale(viewportWidth);
       final initialX =
-          (viewportWidth - AppConstants.defaultPageSize.width) / 2.0;
+          (viewportWidth - baseScale * AppConstants.defaultPageSize.width) / 2.0;
       final targetMatrix = Matrix4.identity()
-        ..translate(max(0.0, initialX), 24.0);
+        ..translate(initialX, 24.0)
+        ..scale(baseScale, baseScale, 1.0);
       _setTransformation(targetMatrix);
     }
   }
@@ -215,11 +234,14 @@ class _NoteCanvasState extends State<NoteCanvas>
   }
 
   void _zoomAtPoint(Offset pos, double factor) {
+    final RenderBox? box = context.findRenderObject() as RenderBox?;
+    final viewportWidth = box != null && box.hasSize ? box.size.width : 600.0;
+    final baseScale = _getBaseScale(viewportWidth);
+    final minScale = AppConstants.minScale * baseScale;
+    final maxScale = AppConstants.maxScale * baseScale;
+
     final currentScale = _getScale(_transformationController.value);
-    final targetScale = (currentScale * factor).clamp(
-      AppConstants.minScale,
-      AppConstants.maxScale,
-    );
+    final targetScale = (currentScale * factor).clamp(minScale, maxScale);
     if ((targetScale - currentScale).abs() < 0.0001) return;
     final effectiveFactor = targetScale / currentScale;
 
@@ -249,9 +271,11 @@ class _NoteCanvasState extends State<NoteCanvas>
     final center = box != null && box.hasSize
         ? Offset(box.size.width / 2.0, box.size.height / 2.0)
         : const Offset(400.0, 400.0);
+    final viewportWidth = box != null && box.hasSize ? box.size.width : 600.0;
+    final baseScale = _getBaseScale(viewportWidth);
     final currentScale = _getScale(_transformationController.value);
-    if ((currentScale - 1.0).abs() < 0.001) return;
-    _zoomAtPoint(center, 1.0 / currentScale);
+    if ((currentScale - baseScale).abs() < 0.001) return;
+    _zoomAtPoint(center, baseScale / currentScale);
   }
 
   /// Resets zoom to 100% and re-centers the active page in view.
@@ -259,13 +283,15 @@ class _NoteCanvasState extends State<NoteCanvas>
     final RenderBox? box = context.findRenderObject() as RenderBox?;
     if (box != null && box.hasSize) {
       final viewportWidth = box.size.width;
+      final baseScale = _getBaseScale(viewportWidth);
       final initialX =
-          (viewportWidth - AppConstants.defaultPageSize.width) / 2.0;
+          (viewportWidth - baseScale * AppConstants.defaultPageSize.width) / 2.0;
       final activeIdx = widget.controller.activePageIndex;
       final pageSheetTop = activeIdx * AppConstants.pagePitch;
-      final targetY = 24.0 - pageSheetTop;
+      final targetY = 24.0 - (baseScale * pageSheetTop);
       final targetMatrix = Matrix4.identity()
-        ..translate(max(0.0, initialX), targetY);
+        ..translate(initialX, targetY)
+        ..scale(baseScale, baseScale, 1.0);
       _animateToMatrix(targetMatrix);
     }
   }
@@ -395,10 +421,13 @@ class _NoteCanvasState extends State<NoteCanvas>
     );
   }
 
-  Widget _buildFloatingZoomControls(double scale) {
-    final percent = (scale * 100).round();
-    final canZoomOut = scale > AppConstants.minScale + 0.01;
-    final canZoomIn = scale < AppConstants.maxScale - 0.01;
+  Widget _buildFloatingZoomControls(double scale, double viewportWidth) {
+    final baseScale = _getBaseScale(viewportWidth);
+    final percent = ((scale / baseScale) * 100).round();
+    final minScale = AppConstants.minScale * baseScale;
+    final maxScale = AppConstants.maxScale * baseScale;
+    final canZoomOut = scale > minScale + 0.01;
+    final canZoomIn = scale < maxScale - 0.01;
 
     return Positioned(
       right: 16,
@@ -549,6 +578,35 @@ class _NoteCanvasState extends State<NoteCanvas>
                           }
                         },
                     onPointerDown: (e) {
+                      // Stylus palm rejection: ignore touch pointer if stylus is currently drawing
+                      if (_primaryDrawingPointer != null &&
+                          _primaryPointerKind == PointerDeviceKind.stylus &&
+                          e.kind == PointerDeviceKind.touch) {
+                        return;
+                      }
+
+                      _activePointers[e.pointer] = e.localPosition;
+
+                      if (_activePointers.length >= 2) {
+                        // Multi-touch pinch / pan initiated: cancel any pending single-finger stroke
+                        final primaryPtr = _primaryDrawingPointer;
+                        if (primaryPtr != null) {
+                          widget.controller.onPointerCancel(pointer: primaryPtr);
+                          _primaryDrawingPointer = null;
+                        }
+                        _isPinching = true;
+                        final pts = _activePointers.values.toList();
+                        _initialPinchDistance = (pts[0] - pts[1]).distance;
+                        _initialPinchFocal = (pts[0] + pts[1]) / 2.0;
+                        _initialPinchMatrix = _transformationController.value.clone();
+                        return;
+                      }
+
+                      if (_isPinching) return;
+
+                      _primaryDrawingPointer = e.pointer;
+                      _primaryPointerKind = e.kind;
+
                       if (widget.controller.activeTool == ToolType.pan) return;
 
                       final scenePos =
@@ -648,6 +706,44 @@ class _NoteCanvasState extends State<NoteCanvas>
                       );
                     },
                     onPointerMove: (e) {
+                      if (!_activePointers.containsKey(e.pointer)) return;
+                      _activePointers[e.pointer] = e.localPosition;
+
+                      if (_isPinching && _activePointers.length >= 2) {
+                        final pts = _activePointers.values.toList();
+                        final currentDistance = (pts[0] - pts[1]).distance;
+                        final currentFocal = (pts[0] + pts[1]) / 2.0;
+
+                        if (_initialPinchDistance > 10.0) {
+                          final scaleDelta = currentDistance / _initialPinchDistance;
+
+                          final translationBefore = Matrix4.translationValues(
+                            -_initialPinchFocal.dx,
+                            -_initialPinchFocal.dy,
+                            0.0,
+                          );
+                          final scaleMatrix = Matrix4.diagonal3Values(
+                            scaleDelta,
+                            scaleDelta,
+                            1.0,
+                          );
+                          final translationAfter = Matrix4.translationValues(
+                            currentFocal.dx,
+                            currentFocal.dy,
+                            0.0,
+                          );
+
+                          final transform =
+                              translationAfter * scaleMatrix * translationBefore;
+                          _setTransformation(transform * _initialPinchMatrix);
+                        }
+                        return;
+                      }
+
+                      if (_isPinching || _primaryDrawingPointer != e.pointer) {
+                        return;
+                      }
+
                       if (widget.controller.activeTool == ToolType.pan) return;
 
                       final scenePos =
@@ -667,26 +763,50 @@ class _NoteCanvasState extends State<NoteCanvas>
                       );
                     },
                     onPointerUp: (e) {
-                      if (widget.controller.activeTool == ToolType.pan) return;
+                      _activePointers.remove(e.pointer);
 
-                      final scenePos =
-                          _transformationController.toScene(e.localPosition);
-                      final activeIdx = widget.controller.activePageIndex;
-                      final localX = scenePos.dx;
-                      final localY = scenePos.dy -
-                          (AppConstants.pageHeaderHeight +
-                              activeIdx * AppConstants.pagePitch);
+                      if (_isPinching) {
+                        if (_activePointers.length < 2) {
+                          _isPinching = false;
+                        }
+                        return;
+                      }
 
-                      widget.controller.onPointerUp(
-                        Offset(localX, localY),
-                        pointer: e.pointer,
-                        kind: e.kind,
-                        pressure: e.pressure,
-                        buttons: e.buttons,
-                      );
+                      if (_primaryDrawingPointer == e.pointer) {
+                        _primaryDrawingPointer = null;
+
+                        if (widget.controller.activeTool == ToolType.pan) return;
+
+                        final scenePos =
+                            _transformationController.toScene(e.localPosition);
+                        final activeIdx = widget.controller.activePageIndex;
+                        final localX = scenePos.dx;
+                        final localY = scenePos.dy -
+                            (AppConstants.pageHeaderHeight +
+                                activeIdx * AppConstants.pagePitch);
+
+                        widget.controller.onPointerUp(
+                          Offset(localX, localY),
+                          pointer: e.pointer,
+                          kind: e.kind,
+                          pressure: e.pressure,
+                          buttons: e.buttons,
+                        );
+                      }
                     },
                     onPointerCancel: (e) {
-                      widget.controller.onPointerCancel(pointer: e.pointer);
+                      _activePointers.remove(e.pointer);
+
+                      if (_isPinching) {
+                        if (_activePointers.length < 2) {
+                          _isPinching = false;
+                        }
+                      }
+
+                      if (_primaryDrawingPointer == e.pointer) {
+                        _primaryDrawingPointer = null;
+                        widget.controller.onPointerCancel(pointer: e.pointer);
+                      }
                     },
                     child: InteractiveViewer(
                       transformationController: _transformationController,
@@ -803,7 +923,7 @@ class _NoteCanvasState extends State<NoteCanvas>
                               direction,
                               widget.controller.activePageIndex,
                             ),
-                            _buildFloatingZoomControls(scale),
+                            _buildFloatingZoomControls(scale, viewportSize.width),
                           ],
                         );
                       },
