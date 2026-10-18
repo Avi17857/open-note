@@ -334,6 +334,33 @@ void main() {
       );
       expect(result, initial);
     });
+
+    test('rotatePoint and unrotatePoint are exact inverse operations', () {
+      const center = Offset(150, 150);
+      const point = Offset(200, 100);
+      const angle = pi / 4; // 45 degrees
+
+      final rotated = LassoService.rotatePoint(point, center, angle);
+      final restored = LassoService.unrotatePoint(rotated, center, angle);
+
+      expect(restored.dx, closeTo(point.dx, 1e-4));
+      expect(restored.dy, closeTo(point.dy, 1e-4));
+    });
+
+    test('computeRotatedEnclosingBounds expands AABB correctly for rotated box', () {
+      const bounds = Rect.fromLTWH(100, 100, 100, 100); // 100x100 square centered at (150, 150)
+      // At 45 degrees, a 100x100 square has width & height = 100 * sqrt(2) ≈ 141.42
+      final rotatedBounds = LassoService.computeRotatedEnclosingBounds(bounds, pi / 4);
+
+      expect(rotatedBounds.center.dx, closeTo(150.0, 1e-4));
+      expect(rotatedBounds.center.dy, closeTo(150.0, 1e-4));
+      expect(rotatedBounds.width, closeTo(100.0 * sqrt(2), 1e-2));
+      expect(rotatedBounds.height, closeTo(100.0 * sqrt(2), 1e-2));
+
+      // At 0 degrees, it matches original bounds
+      final unrotated = LassoService.computeRotatedEnclosingBounds(bounds, 0.0);
+      expect(unrotated, bounds);
+    });
   });
 }
 

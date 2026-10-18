@@ -4,12 +4,24 @@ import 'package:open_note/features/canvas/services/lasso_service.dart';
 /// Paints the dashed bounding box and 4 corner resize handles around selected strokes.
 class SelectionPainter extends CustomPainter {
   final Rect bounds;
+  final double rotationAngle;
 
-  const SelectionPainter({required this.bounds});
+  const SelectionPainter({
+    required this.bounds,
+    this.rotationAngle = 0.0,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     if (bounds.isEmpty) return;
+
+    canvas.save();
+    if (rotationAngle != 0.0) {
+      final center = bounds.center;
+      canvas.translate(center.dx, center.dy);
+      canvas.rotate(rotationAngle);
+      canvas.translate(-center.dx, -center.dy);
+    }
 
     // 1. Subtle background highlight over selected strokes
     final fillPaint = Paint()
@@ -33,6 +45,8 @@ class SelectionPainter extends CustomPainter {
 
     // 4. Rotation stem and handle
     _drawRotationHandle(canvas, bounds, borderPaint);
+
+    canvas.restore();
   }
 
   void _drawRotationHandle(Canvas canvas, Rect bounds, Paint borderPaint) {
@@ -168,6 +182,8 @@ class SelectionPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant SelectionPainter oldDelegate) {
-    return oldDelegate.bounds != bounds;
+    return oldDelegate.bounds != bounds ||
+        oldDelegate.rotationAngle != rotationAngle;
   }
 }
+

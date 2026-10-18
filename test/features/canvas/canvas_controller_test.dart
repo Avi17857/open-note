@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -671,6 +672,7 @@ void main() {
 
       // Rotate 90 degrees clockwise around center (100, 100)
       controller.rotateSelection90(clockwise: true);
+      expect(controller.selectionRotation, closeTo(pi / 2, 0.001));
 
       // (100, 50) rotated 90 deg clockwise around (100, 100) -> (150, 100)
       // (100, 150) rotated 90 deg clockwise around (100, 100) -> (50, 100)
@@ -680,6 +682,10 @@ void main() {
       expect(rotatedStroke.points.last.dx, closeTo(50.0, 0.01));
       expect(rotatedStroke.points.last.dy, closeTo(100.0, 0.01));
       expect(controller.canUndo, isTrue);
+
+      // Deselect resets rotation to 0
+      controller.deselect();
+      expect(controller.selectionRotation, 0.0);
 
       // Undo restores vertical orientation
       controller.undo();
@@ -717,6 +723,7 @@ void main() {
       // Center is (100, 100). Top handle is at (100, 42 - 26 = 16) -> angle is -pi/2 (-90 deg)
       // Dragging to (184, 100) -> angle is 0 deg (relative delta +90 deg clockwise)
       controller.onPointerMove(const Offset(184, 100));
+      expect(controller.selectionRotation, closeTo(pi / 2, 0.1));
       controller.onPointerUp(const Offset(184, 100));
 
       // Points should now be rotated by ~90 degrees

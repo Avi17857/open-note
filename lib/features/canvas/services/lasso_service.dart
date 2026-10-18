@@ -239,6 +239,41 @@ class LassoService {
     }).toList();
   }
 
+  /// Rotates [point] around [pivot] by [radians].
+  static Offset rotatePoint(Offset point, Offset pivot, double radians) {
+    if (radians == 0.0) return point;
+    final cosA = cos(radians);
+    final sinA = sin(radians);
+    final rx = point.dx - pivot.dx;
+    final ry = point.dy - pivot.dy;
+    return Offset(
+      pivot.dx + (rx * cosA - ry * sinA),
+      pivot.dy + (rx * sinA + ry * cosA),
+    );
+  }
+
+  /// Un-rotates [point] around [pivot] by [radians] (rotates by -radians).
+  static Offset unrotatePoint(Offset point, Offset pivot, double radians) {
+    return rotatePoint(point, pivot, -radians);
+  }
+
+  /// Computes the axis-aligned enclosing bounds of a [bounds] rectangle
+  /// rotated by [radians] around its center (including the rotation knob).
+  static Rect computeRotatedEnclosingBounds(Rect bounds, double radians) {
+    if (radians == 0.0) return bounds;
+    final center = bounds.center;
+    final knobPos = getRotationHandlePosition(bounds);
+    final corners = [
+      rotatePoint(bounds.topLeft, center, radians),
+      rotatePoint(bounds.topRight, center, radians),
+      rotatePoint(bounds.bottomLeft, center, radians),
+      rotatePoint(bounds.bottomRight, center, radians),
+      rotatePoint(knobPos, center, radians),
+    ];
+    return computePolygonBounds(corners);
+  }
+
+
   /// Tests which handle of [bounds] was hit by [pointer], if any.
   static LassoHandle hitTestHandle(
     Offset pointer,

@@ -268,6 +268,8 @@ class _NoteCanvasState extends State<NoteCanvas> {
                                             painter: SelectionPainter(
                                               bounds:
                                                   widget.controller.selectionBounds!,
+                                              rotationAngle:
+                                                  widget.controller.selectionRotation,
                                             ),
                                           ),
                                       ],
@@ -283,6 +285,8 @@ class _NoteCanvasState extends State<NoteCanvas> {
                                   SelectionToolbar(
                                     controller: widget.controller,
                                     bounds: widget.controller.selectionBounds!,
+                                    rotationAngle:
+                                        widget.controller.selectionRotation,
                                   ),
                               ],
                             ),

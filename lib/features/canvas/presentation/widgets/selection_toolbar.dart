@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:open_note/features/canvas/controllers/canvas_controller.dart';
+import 'package:open_note/features/canvas/services/lasso_service.dart';
 
 /// Floating contextual action bar positioned near selected strokes on the canvas.
 class SelectionToolbar extends StatelessWidget {
   final CanvasController controller;
   final Rect bounds;
+  final double rotationAngle;
 
   const SelectionToolbar({
     super.key,
     required this.controller,
     required this.bounds,
+    this.rotationAngle = 0.0,
   });
 
   /// Computes the bounding rectangle of the floating toolbar relative to page bounds.
@@ -18,31 +21,33 @@ class SelectionToolbar extends StatelessWidget {
   /// places toolbar well above the rotation knob.
   static Rect getToolbarRect(
     Rect bounds, {
+    double rotationAngle = 0.0,
     double pageWidth = 600.0,
     double pageHeight = 850.0,
   }) {
-    final centerLeft = bounds.center.dx;
+    final effectiveBounds = rotationAngle == 0.0
+        ? bounds
+        : LassoService.computeRotatedEnclosingBounds(bounds, rotationAngle);
+    final centerLeft = effectiveBounds.center.dx;
     final leftPos = (centerLeft - 95).clamp(8.0, pageWidth - 190.0 - 8.0);
 
-    if (bounds.top >= 36.0) {
-      // Rotation handle is at top (bounds.top - 28)
+    if (effectiveBounds.top >= 36.0) {
       // Default: position below selection bounds (complete clearance from rotation knob)
-      if (bounds.bottom + 14.0 <= pageHeight - 55.0) {
-        return Rect.fromLTWH(leftPos, bounds.bottom + 14.0, 190, 44);
+      if (effectiveBounds.bottom + 14.0 <= pageHeight - 55.0) {
+        return Rect.fromLTWH(leftPos, effectiveBounds.bottom + 14.0, 190, 44);
       } else {
         // Selection near bottom: position well above rotation knob
-        return Rect.fromLTWH(leftPos, bounds.top - 82.0, 190, 44);
+        return Rect.fromLTWH(leftPos, effectiveBounds.top - 82.0, 190, 44);
       }
     } else {
-      // Rotation handle flipped below (bounds.bottom + 28)
-      final topPos = (bounds.bottom + 58.0).clamp(8.0, pageHeight - 55.0);
+      final topPos = (effectiveBounds.bottom + 58.0).clamp(8.0, pageHeight - 55.0);
       return Rect.fromLTWH(leftPos, topPos, 190, 44);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final rect = getToolbarRect(bounds);
+    final rect = getToolbarRect(bounds, rotationAngle: rotationAngle);
 
     return Positioned(
       top: rect.top,
