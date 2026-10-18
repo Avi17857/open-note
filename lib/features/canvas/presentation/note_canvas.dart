@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:open_note/core/constants/app_constants.dart';
@@ -33,12 +34,30 @@ class NoteCanvas extends StatefulWidget {
 }
 
 class _NoteCanvasState extends State<NoteCanvas> {
-  static const double _boardMarginHorizontal = 300.0;
-  static const double _boardMarginVertical = 120.0;
-
   final TransformationController _transformationController =
       TransformationController();
   final Map<String, RichTextEditingController> _textControllers = {};
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _centerCanvasInViewport();
+      }
+    });
+  }
+
+  void _centerCanvasInViewport() {
+    final RenderBox? box = context.findRenderObject() as RenderBox?;
+    if (box != null && box.hasSize) {
+      final viewportWidth = box.size.width;
+      final initialX =
+          (viewportWidth - AppConstants.defaultPageSize.width) / 2.0;
+      _transformationController.value = Matrix4.identity()
+        ..translate(max(0.0, initialX), 24.0);
+    }
+  }
 
   RichTextEditingController _getOrCreateTextController(NoteTextBox box) {
     var ctrl = _textControllers[box.id];
@@ -75,7 +94,7 @@ class _NoteCanvasState extends State<NoteCanvas> {
   }
 
   void _resetZoom() {
-    _transformationController.value = Matrix4.identity();
+    _centerCanvasInViewport();
   }
 
   MouseCursor get _currentCursor {
@@ -91,23 +110,19 @@ class _NoteCanvasState extends State<NoteCanvas> {
     };
   }
 
-  bool _isPointerOverAnyTextBox(Offset boardPos) {
+  bool _isPointerOverAnyTextBox(Offset scenePos) {
     for (int i = 0; i < widget.controller.pages.length; i++) {
       final page = widget.controller.pages[i];
-      final origin = Offset(
-        _boardMarginHorizontal,
-        _boardMarginVertical +
-            AppConstants.pageHeaderHeight +
-            i * AppConstants.pagePitch,
-      );
+      final pageOriginY =
+          AppConstants.pageHeaderHeight + i * AppConstants.pagePitch;
       for (final box in page.textBoxes) {
         final boxRect = Rect.fromLTWH(
-          origin.dx + box.position.dx,
-          origin.dy + box.position.dy,
+          box.position.dx,
+          pageOriginY + box.position.dy,
           box.width,
           box.height ?? 44.0,
         ).inflate(12.0);
-        if (boxRect.contains(boardPos)) {
+        if (boxRect.contains(scenePos)) {
           return true;
         }
       }
@@ -128,18 +143,162 @@ class _NoteCanvasState extends State<NoteCanvas> {
 
               return Stack(
                 children: [
-                  // Interactive Pan / Zoom Viewport with mouse scroll support
+                  // Full-viewport gesture listener with matrix inversion (never clips or dead-zones)
                   Listener(
+                    behavior: HitTestBehavior.translucent,
                     onPointerSignal: (pointerSignal) {
                       if (pointerSignal is PointerScrollEvent) {
                         final matrix = _transformationController.value.clone();
-                        matrix.translate(0.0, -pointerSignal.scrollDelta.dy);
+                        matrix.translate(
+                          -pointerSignal.scrollDelta.dx,
+                          -pointerSignal.scrollDelta.dy,
+                        );
                         _transformationController.value = matrix;
                       }
                     },
+                    onPointerDown: (e) {
+                      if (widget.controller.activeTool == ToolType.pan) return;
+
+                      final scenePos =
+                          _transformationController.toScene(e.localPosition);
+                      final boardX = scenePos.dx;
+                      final boardY = scenePos.dy;
+                      final touchPageIndex = (boardY / AppConstants.pagePitch)
+                          .floor()
+                          .clamp(0, widget.controller.pages.length - 1);
+                      final totalPagesHeight =
+                          widget.controller.pages.length * AppConstants.pagePitch;
+                      final pageTopY = touchPageIndex * AppConstants.pagePitch;
+
+                      // Priority 1: Check active selection handles, rotation stem, and toolbar
+                      bool isInteractingWithSelection = false;
+                      if (widget.controller.hasSelection &&
+                          widget.controller.selectionBounds != null) {
+                        final activeIdx = widget.controller.activePageIndex;
+                        final canvasOrigin = Offset(
+                          0.0,
+                          AppConstants.pageHeaderHeight +
+                              activeIdx * AppConstants.pagePitch,
+                        );
+                        final globalBounds = widget.controller
+                            .selectionBounds!
+                            .shift(canvasOrigin);
+
+                        Offset effectivePos = scenePos;
+                        if (widget.controller.selectionRotation != 0.0) {
+                          effectivePos = LassoService.unrotatePoint(
+                            scenePos,
+                            globalBounds.center,
+                            widget.controller.selectionRotation,
+                          );
+                        }
+                        final handle = LassoService.hitTestHandle(
+                          effectivePos,
+                          globalBounds,
+                        );
+                        final toolbarRect = SelectionToolbar.getToolbarRect(
+                          globalBounds,
+                          rotationAngle:
+                              widget.controller.selectionRotation,
+                          pageWidth: AppConstants.defaultPageSize.width,
+                        );
+                        if (handle != LassoHandle.none ||
+                            toolbarRect.contains(scenePos)) {
+                          isInteractingWithSelection = true;
+                        }
+                      }
+
+                      // Priority 2: Filter non-lasso interactions over UI buttons/headers
+                      if (!isInteractingWithSelection) {
+                        final isOverAddButton = boardX >= 0 &&
+                            boardX <= AppConstants.defaultPageSize.width &&
+                            boardY >= totalPagesHeight &&
+                            boardY <= totalPagesHeight + 52.0;
+
+                        final isOverHeader = boardX >= 0 &&
+                            boardX <= AppConstants.defaultPageSize.width &&
+                            boardY >= pageTopY &&
+                            boardY < pageTopY + AppConstants.pageHeaderHeight;
+
+                        if ((isOverAddButton || isOverHeader) &&
+                            widget.controller.activeTool != ToolType.lasso) {
+                          return;
+                        }
+
+                        // Switch active page only if not using the lasso tool
+                        // (lasso selection detects the correct page upon pointer up)
+                        if (widget.controller.activeTool != ToolType.lasso &&
+                            widget.controller.activePageIndex != touchPageIndex) {
+                          widget.controller.setActivePage(touchPageIndex);
+                        }
+                      }
+
+                      final activeIdx = widget.controller.activePageIndex;
+                      final localX = boardX;
+                      final localY = boardY -
+                          (AppConstants.pageHeaderHeight +
+                              activeIdx * AppConstants.pagePitch);
+
+                      // If touching inside a text box and not in text or lasso mode, ignore canvas pointer down
+                      if (!isInteractingWithSelection &&
+                          widget.controller.activeTool != ToolType.text &&
+                          widget.controller.activeTool != ToolType.lasso &&
+                          _isPointerOverAnyTextBox(scenePos)) {
+                        return;
+                      }
+
+                      widget.controller.onPointerDown(
+                        Offset(localX, localY),
+                        pointer: e.pointer,
+                        kind: e.kind,
+                        pressure: e.pressure,
+                        buttons: e.buttons,
+                      );
+                    },
+                    onPointerMove: (e) {
+                      if (widget.controller.activeTool == ToolType.pan) return;
+
+                      final scenePos =
+                          _transformationController.toScene(e.localPosition);
+                      final activeIdx = widget.controller.activePageIndex;
+                      final localX = scenePos.dx;
+                      final localY = scenePos.dy -
+                          (AppConstants.pageHeaderHeight +
+                              activeIdx * AppConstants.pagePitch);
+
+                      widget.controller.onPointerMove(
+                        Offset(localX, localY),
+                        pointer: e.pointer,
+                        kind: e.kind,
+                        pressure: e.pressure,
+                        buttons: e.buttons,
+                      );
+                    },
+                    onPointerUp: (e) {
+                      if (widget.controller.activeTool == ToolType.pan) return;
+
+                      final scenePos =
+                          _transformationController.toScene(e.localPosition);
+                      final activeIdx = widget.controller.activePageIndex;
+                      final localX = scenePos.dx;
+                      final localY = scenePos.dy -
+                          (AppConstants.pageHeaderHeight +
+                              activeIdx * AppConstants.pagePitch);
+
+                      widget.controller.onPointerUp(
+                        Offset(localX, localY),
+                        pointer: e.pointer,
+                        kind: e.kind,
+                        pressure: e.pressure,
+                        buttons: e.buttons,
+                      );
+                    },
+                    onPointerCancel: (e) {
+                      widget.controller.onPointerCancel(pointer: e.pointer);
+                    },
                     child: InteractiveViewer(
                       transformationController: _transformationController,
-                      boundaryMargin: const EdgeInsets.all(600),
+                      boundaryMargin: const EdgeInsets.all(4000),
                       minScale: AppConstants.minScale,
                       maxScale: AppConstants.maxScale,
                       panEnabled: isPanTool,
@@ -148,200 +307,79 @@ class _NoteCanvasState extends State<NoteCanvas> {
                       child: Center(
                         child: MouseRegion(
                           cursor: _currentCursor,
-                          child: SizedBox(
-                            width: AppConstants.defaultPageSize.width +
-                                _boardMarginHorizontal * 2,
-                            child: Listener(
-                              behavior: HitTestBehavior.opaque,
-                              onPointerDown: (e) {
-                                final boardX = e.localPosition.dx;
-                                final boardY = e.localPosition.dy;
-                                final yRelativeToFirstPage =
-                                    boardY - _boardMarginVertical;
-                                final touchPageIndex = (yRelativeToFirstPage /
-                                        AppConstants.pagePitch)
-                                    .floor()
-                                    .clamp(
-                                        0, widget.controller.pages.length - 1);
-
-                                bool isInteractingWithSelection = false;
-                                if (widget.controller.hasSelection &&
-                                    widget.controller.selectionBounds != null) {
-                                  final activeIdx =
-                                      widget.controller.activePageIndex;
-                                  final canvasOrigin = Offset(
-                                    _boardMarginHorizontal,
-                                    _boardMarginVertical +
-                                        AppConstants.pageHeaderHeight +
-                                        activeIdx * AppConstants.pagePitch,
-                                  );
-                                  final globalBounds = widget.controller
-                                      .selectionBounds!
-                                      .shift(canvasOrigin);
-
-                                  Offset effectivePos = e.localPosition;
-                                  if (widget.controller.selectionRotation !=
-                                      0.0) {
-                                    effectivePos = LassoService.unrotatePoint(
-                                      e.localPosition,
-                                      globalBounds.center,
-                                      widget.controller.selectionRotation,
-                                    );
-                                  }
-                                  final handle = LassoService.hitTestHandle(
-                                    effectivePos,
-                                    globalBounds,
-                                  );
-                                  final toolbarRect =
-                                      SelectionToolbar.getToolbarRect(
-                                    globalBounds,
-                                    rotationAngle:
-                                        widget.controller.selectionRotation,
-                                    pageWidth:
-                                        AppConstants.defaultPageSize.width,
-                                  );
-                                  if (handle != LassoHandle.none ||
-                                      toolbarRect.contains(e.localPosition)) {
-                                    isInteractingWithSelection = true;
-                                  }
-                                }
-
-                                if (!isInteractingWithSelection) {
-                                  if (widget.controller.activePageIndex !=
-                                      touchPageIndex) {
-                                    widget.controller
-                                        .setActivePage(touchPageIndex);
-                                  }
-                                }
-
-                                final activeIdx =
-                                    widget.controller.activePageIndex;
-                                final localX = boardX - _boardMarginHorizontal;
-                                final localY = boardY -
-                                    (_boardMarginVertical +
-                                        AppConstants.pageHeaderHeight +
-                                        activeIdx * AppConstants.pagePitch);
-
-                                // If touching inside a text box and not in text mode, do not draw or lasso
-                                if (!isInteractingWithSelection &&
-                                    widget.controller.activeTool !=
-                                        ToolType.text &&
-                                    _isPointerOverAnyTextBox(e.localPosition)) {
-                                  return;
-                                }
-
-                                widget.controller.onPointerDown(
-                                  Offset(localX, localY),
-                                  pointer: e.pointer,
-                                  kind: e.kind,
-                                  pressure: e.pressure,
-                                  buttons: e.buttons,
-                                );
-                              },
-                              onPointerMove: (e) {
-                                final activeIdx =
-                                    widget.controller.activePageIndex;
-                                final localX =
-                                    e.localPosition.dx - _boardMarginHorizontal;
-                                final localY = e.localPosition.dy -
-                                    (_boardMarginVertical +
-                                        AppConstants.pageHeaderHeight +
-                                        activeIdx * AppConstants.pagePitch);
-
-                                widget.controller.onPointerMove(
-                                  Offset(localX, localY),
-                                  pointer: e.pointer,
-                                  kind: e.kind,
-                                  pressure: e.pressure,
-                                  buttons: e.buttons,
-                                );
-                              },
-                              onPointerUp: (e) {
-                                final activeIdx =
-                                    widget.controller.activePageIndex;
-                                final localX =
-                                    e.localPosition.dx - _boardMarginHorizontal;
-                                final localY = e.localPosition.dy -
-                                    (_boardMarginVertical +
-                                        AppConstants.pageHeaderHeight +
-                                        activeIdx * AppConstants.pagePitch);
-
-                                widget.controller.onPointerUp(
-                                  Offset(localX, localY),
-                                  pointer: e.pointer,
-                                  kind: e.kind,
-                                  pressure: e.pressure,
-                                  buttons: e.buttons,
-                                );
-                              },
-                              onPointerCancel: (e) {
-                                widget.controller
-                                    .onPointerCancel(pointer: e.pointer);
-                              },
-                              child: Stack(
-                                clipBehavior: Clip.none,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              // Layer 1: Multi-page vertical sheets
+                              Column(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  // Layer 1: Page sheets in vertical column
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: _boardMarginHorizontal,
-                                      vertical: _boardMarginVertical,
+                                  for (int i = 0;
+                                      i < widget.controller.pages.length;
+                                      i++) ...[
+                                    _buildPageSheet(i),
+                                    const SizedBox(
+                                      height: AppConstants.pageGap,
                                     ),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        for (int i = 0;
-                                            i <
-                                                widget.controller.pages
-                                                    .length;
-                                            i++) ...[
-                                          _buildPageSheet(i),
-                                          const SizedBox(
-                                            height: AppConstants.pageGap,
-                                          ),
-                                        ],
-                                        _buildAddPageButton(),
-                                        const SizedBox(height: 48.0),
-                                      ],
+                                  ],
+                                  _buildAddPageButton(),
+                                  const SizedBox(height: 48.0),
+                                ],
+                              ),
+
+                              // Layer 2: All text boxes across all pages
+                              for (int i = 0;
+                                  i < widget.controller.pages.length;
+                                  i++)
+                                for (final box in widget
+                                    .controller.pages[i].textBoxes)
+                                  TextBoxWidget(
+                                    key: ValueKey(box.id),
+                                    textBox: box,
+                                    controller: widget.controller,
+                                    isSelected: widget.controller
+                                            .activeTextBoxId ==
+                                        box.id,
+                                    richController:
+                                        _getOrCreateTextController(box),
+                                    boardPosition: Offset(
+                                      box.position.dx,
+                                      AppConstants.pageHeaderHeight +
+                                          i * AppConstants.pagePitch +
+                                          box.position.dy,
                                     ),
                                   ),
 
-                                  // Layer 2: All text boxes across all pages
-                                  for (int i = 0;
-                                      i < widget.controller.pages.length;
-                                      i++)
-                                    for (final box in widget
-                                        .controller.pages[i].textBoxes)
-                                      TextBoxWidget(
-                                        key: ValueKey(box.id),
-                                        textBox: box,
-                                        controller: widget.controller,
-                                        isSelected: widget.controller
-                                                .activeTextBoxId ==
-                                            box.id,
-                                        richController:
-                                            _getOrCreateTextController(box),
-                                        boardPosition: Offset(
-                                          _boardMarginHorizontal +
-                                              box.position.dx,
-                                          _boardMarginVertical +
-                                              AppConstants.pageHeaderHeight +
-                                              i * AppConstants.pagePitch +
-                                              box.position.dy,
-                                        ),
-                                      ),
+                              // Layer 3: Selection bounding box, handles, toolbar, and dragged strokes
+                              if (widget.controller.hasSelection &&
+                                  widget.controller.selectionBounds != null)
+                                _buildGlobalSelectionOverlay(),
 
-                                  // Layer 3: Selection bounding box, handles, toolbar, and dragged strokes
-                                  if (widget.controller.hasSelection &&
-                                      widget.controller.selectionBounds !=
-                                          null)
-                                    _buildGlobalSelectionOverlay(
-                                      _boardMarginHorizontal,
-                                      _boardMarginVertical,
+                              // Layer 4: Global Lasso in-progress freeform loop
+                              ValueListenableBuilder<List<Offset>>(
+                                valueListenable:
+                                    widget.controller.lassoPointsNotifier,
+                                builder: (context, lassoPoints, _) {
+                                  if (lassoPoints.isEmpty) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  final activePageIdx =
+                                      widget.controller.activePageIndex;
+                                  final canvasOrigin = Offset(
+                                    0.0,
+                                    AppConstants.pageHeaderHeight +
+                                        activePageIdx *
+                                            AppConstants.pagePitch,
+                                  );
+                                  return Transform.translate(
+                                    offset: canvasOrigin,
+                                    child: CustomPaint(
+                                      painter: LassoPathPainter(lassoPoints),
                                     ),
-                                ],
+                                  );
+                                },
                               ),
-                            ),
+                            ],
                           ),
                         ),
                       ),
@@ -531,7 +569,8 @@ class _NoteCanvasState extends State<NoteCanvas> {
                 ValueListenableBuilder<List<StrokePoint>>(
                   valueListenable: widget.controller.currentStrokeNotifier,
                   builder: (context, currentPoints, _) {
-                    if (widget.controller.activeTool != ToolType.highlighter ||
+                    if (widget.controller.activeTool !=
+                            ToolType.highlighter ||
                         currentPoints.isEmpty) {
                       return const SizedBox.shrink();
                     }
@@ -563,7 +602,8 @@ class _NoteCanvasState extends State<NoteCanvas> {
                 ValueListenableBuilder<List<StrokePoint>>(
                   valueListenable: widget.controller.currentStrokeNotifier,
                   builder: (context, currentPoints, _) {
-                    if (widget.controller.activeTool == ToolType.highlighter ||
+                    if (widget.controller.activeTool ==
+                            ToolType.highlighter ||
                         currentPoints.isEmpty) {
                       return const SizedBox.shrink();
                     }
@@ -599,19 +639,6 @@ class _NoteCanvasState extends State<NoteCanvas> {
                   },
                 ),
 
-              // 7. Lasso in-progress freeform loop
-              if (isActivePage)
-                ValueListenableBuilder<List<Offset>>(
-                  valueListenable: widget.controller.lassoPointsNotifier,
-                  builder: (context, lassoPoints, _) {
-                    if (lassoPoints.isEmpty) {
-                      return const SizedBox.shrink();
-                    }
-                    return CustomPaint(
-                      painter: LassoPathPainter(lassoPoints),
-                    );
-                  },
-                ),
             ],
           ),
         ),
@@ -621,16 +648,11 @@ class _NoteCanvasState extends State<NoteCanvas> {
 
   /// Global selection overlay rendered across the entire multi-page Column so dragged strokes,
   /// selection bounding boxes, and handles can cross page boundaries and margins without clipping.
-  Widget _buildGlobalSelectionOverlay(
-    double boardMarginHorizontal,
-    double boardMarginVertical,
-  ) {
+  Widget _buildGlobalSelectionOverlay() {
     final activePageIdx = widget.controller.activePageIndex;
     final canvasOrigin = Offset(
-      boardMarginHorizontal,
-      boardMarginVertical +
-          AppConstants.pageHeaderHeight +
-          activePageIdx * AppConstants.pagePitch,
+      0.0,
+      AppConstants.pageHeaderHeight + activePageIdx * AppConstants.pagePitch,
     );
     final globalBounds = widget.controller.selectionBounds!.shift(canvasOrigin);
 

@@ -439,7 +439,9 @@ class CanvasController extends ChangeNotifier {
     if (!hasSelection) return;
     _recordHistory();
     final toRemove = _selectedStrokes.toSet();
-    _strokes = _strokes.where((s) => !toRemove.contains(s)).toList();
+    for (final page in _pages) {
+      page.strokes = page.strokes.where((s) => !toRemove.contains(s)).toList();
+    }
     _selectedStrokes = [];
     _selectionBounds = null;
     _selectionRotation = 0.0;
@@ -627,15 +629,7 @@ class CanvasController extends ChangeNotifier {
       if (hit != null) {
         selectTextBox(hit.id);
       } else {
-        final clampedX = localPosition.dx.clamp(
-          16.0,
-          AppConstants.defaultPageSize.width - 240.0,
-        );
-        final clampedY = localPosition.dy.clamp(
-          16.0,
-          AppConstants.defaultPageSize.height - 80.0,
-        );
-        addTextBox(Offset(clampedX, clampedY));
+        addTextBox(localPosition);
       }
       return;
     }
@@ -1044,28 +1038,100 @@ class CanvasController extends ChangeNotifier {
 
       if (isTap && _lassoTouchDownPos != null) {
         // --- SINGLE TAP SELECTION MODE ---
-        // Find topmost visible stroke hit by the tap (strokes behind it are ignored)
-        final tappedStroke = LassoService.findTopmostStrokeAtPoint(
-          _strokes,
-          _lassoTouchDownPos!,
-        );
+        // Search across all pages (active page first, then reverse chronological order)
+        Stroke? foundStroke;
+        int? foundPageIndex;
 
-        if (tappedStroke != null) {
-          _selectedStrokes = [tappedStroke];
-          _selectionBounds = LassoService.computeSelectionBounds([tappedStroke]);
+        final pageOrder = <int>[
+          _activePageIndex,
+          for (int i = _pages.length - 1; i >= 0; i--)
+            if (i != _activePageIndex) i,
+        ];
+
+        for (final p in pageOrder) {
+          if (p < 0 || p >= _pages.length) continue;
+          final yShift = (_activePageIndex - p) * AppConstants.pagePitch;
+          final localTap = _lassoTouchDownPos!.translate(0.0, yShift);
+          final stroke = LassoService.findTopmostStrokeAtPoint(
+            _pages[p].strokes,
+            localTap,
+          );
+          if (stroke != null) {
+            foundStroke = stroke;
+            foundPageIndex = p;
+            break;
+          }
+        }
+
+        if (foundStroke != null && foundPageIndex != null) {
+          _activePageIndex = foundPageIndex;
+          _selectedStrokes = [foundStroke];
+          _selectionBounds = LassoService.computeSelectionBounds([foundStroke]);
           _selectionRotation = 0.0;
         } else {
           deselect();
         }
       } else if (points.length >= 3) {
         // --- FREEFORM LASSO LOOP SELECTION ---
-        final selected = LassoService.findSelectedStrokes(_strokes, points);
-        if (selected.isNotEmpty) {
+        // Search across all pages and margins
+        final hitsPerPage = <int, List<Stroke>>{};
+        for (int p = 0; p < _pages.length; p++) {
+          final yShift = (_activePageIndex - p) * AppConstants.pagePitch;
+          final polygonOnPageP =
+              points.map((pt) => pt.translate(0.0, yShift)).toList();
+          final hits =
+              LassoService.findSelectedStrokes(_pages[p].strokes, polygonOnPageP);
+          if (hits.isNotEmpty) {
+            hitsPerPage[p] = hits;
+          }
+        }
+
+        if (hitsPerPage.isEmpty) {
+          deselect();
+        } else if (hitsPerPage.length == 1) {
+          final p = hitsPerPage.keys.first;
+          final selected = hitsPerPage[p]!;
+          _activePageIndex = p;
           _selectedStrokes = selected;
           _selectionBounds = LassoService.computeSelectionBounds(selected);
           _selectionRotation = 0.0;
         } else {
-          deselect();
+          // Multi-page selection: unify all selected strokes into target page
+          final targetP = hitsPerPage.containsKey(_activePageIndex)
+              ? _activePageIndex
+              : hitsPerPage.keys.first;
+
+          final allUnified = <Stroke>[];
+          for (final entry in hitsPerPage.entries) {
+            final p = entry.key;
+            final strokesOnP = entry.value;
+            if (p == targetP) {
+              allUnified.addAll(strokesOnP);
+            } else {
+              // Shift strokes from page p into targetP coordinate space
+              final yShift = (p - targetP) * AppConstants.pagePitch;
+              final transferred = LassoService.translateStrokes(
+                strokesOnP,
+                Offset(0.0, yShift),
+              );
+              allUnified.addAll(transferred);
+
+              // Remove transferred strokes from page p
+              final toRemove = strokesOnP.toSet();
+              _pages[p].strokes = _pages[p].strokes
+                  .where((s) => !toRemove.contains(s))
+                  .toList();
+              // Add to targetP
+              _pages[targetP].strokes = [
+                ..._pages[targetP].strokes,
+                ...transferred,
+              ];
+            }
+          }
+          _activePageIndex = targetP;
+          _selectedStrokes = allUnified;
+          _selectionBounds = LassoService.computeSelectionBounds(allUnified);
+          _selectionRotation = 0.0;
         }
       } else {
         deselect();

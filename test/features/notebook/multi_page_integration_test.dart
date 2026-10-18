@@ -6,6 +6,7 @@ import 'package:open_note/features/canvas/models/stroke_point.dart';
 import 'package:open_note/features/canvas/models/tool_type.dart';
 import 'package:open_note/features/notebook/controllers/notebook_controller.dart';
 import 'package:open_note/features/notebook/models/note_document.dart';
+import 'package:open_note/core/constants/app_constants.dart';
 import 'package:open_note/features/notebook/models/note_page.dart';
 
 void main() {
@@ -356,6 +357,71 @@ void main() {
       expect(controller.pages.length, equals(1));
       expect(controller.pages[0].textBoxes.length, equals(1));
       expect(controller.pages[0].textBoxes.first.text, equals('Round Trip Note'));
+    });
+
+    test('Single-tap selects stroke located in the margin even when activePageIndex is different', () {
+      // Create stroke on Page 0 in the margin (x = -150, y = 200)
+      controller.setActivePage(0);
+      final strokeInMargin = Stroke(
+        points: [
+          const StrokePoint(-150, 200),
+          const StrokePoint(-140, 210),
+          const StrokePoint(-130, 200),
+        ],
+        strokeWidth: 4.0,
+      );
+      controller.loadStrokes([strokeInMargin]);
+      expect(controller.pages[0].strokes.length, equals(1));
+
+      // Make Page 1 active
+      controller.setActivePage(1);
+      expect(controller.activePageIndex, equals(1));
+      expect(controller.pages[1].strokes, isEmpty);
+
+      // Now tap on the stroke in the margin (at Page 0's coordinates: x = -140, y = 205)
+      // When activePageIndex is 1, the local position is y = 205 - pagePitch
+      final yPitch = AppConstants.pagePitch;
+      controller.setTool(ToolType.lasso);
+      controller.onPointerDown(Offset(-140, 205 - yPitch));
+      controller.onPointerUp(Offset(-140, 205 - yPitch));
+
+      // Verify stroke was detected, selected, and activePageIndex correctly switched to Page 0!
+      expect(controller.hasSelection, isTrue);
+      expect(controller.activePageIndex, equals(0));
+      expect(controller.selectedStrokes.length, equals(1));
+      expect(controller.selectedStrokes.first.points.first.dx, equals(-150));
+    });
+
+    test('Freeform lasso loop selects stroke in margin across page coordinate systems', () {
+      // Place stroke in left margin of Page 0
+      controller.setActivePage(0);
+      final strokeInMargin = Stroke(
+        points: [
+          const StrokePoint(-200, 300),
+          const StrokePoint(-190, 310),
+        ],
+        strokeWidth: 4.0,
+      );
+      controller.loadStrokes([strokeInMargin]);
+
+      // Make Page 1 active
+      controller.setActivePage(1);
+      expect(controller.activePageIndex, equals(1));
+
+      // Draw lasso loop around the stroke from Page 1 coordinate context
+      final yPitch = AppConstants.pagePitch;
+      final localY = 305 - yPitch;
+      controller.setTool(ToolType.lasso);
+      controller.onPointerDown(Offset(-250, localY - 50));
+      controller.onPointerMove(Offset(-150, localY - 50));
+      controller.onPointerMove(Offset(-150, localY + 50));
+      controller.onPointerMove(Offset(-250, localY + 50));
+      controller.onPointerMove(Offset(-250, localY - 50));
+      controller.onPointerUp(Offset(-250, localY - 50));
+
+      expect(controller.hasSelection, isTrue);
+      expect(controller.selectedStrokes.length, equals(1));
+      expect(controller.selectedStrokes.first.points.first.dx, equals(-200));
     });
   });
 }
