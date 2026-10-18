@@ -52,9 +52,9 @@ class _NoteScreenState extends State<NoteScreen> {
       listenable: _notebookController,
       builder: (context, _) {
         final totalPages = _notebookController.currentNote.pages.length;
-        final currentPageNum = _notebookController.currentPageIndex + 1;
 
         return Scaffold(
+          resizeToAvoidBottomInset: false,
           backgroundColor: const Color(0xFFF3F3F5),
           appBar: AppBar(
             backgroundColor: AppColors.primary,
@@ -77,40 +77,29 @@ class _NoteScreenState extends State<NoteScreen> {
               ),
             ),
             actions: [
-              // Page Navigation (< Page 1/3 > +)
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.chevron_left, color: Colors.white),
-                    tooltip: 'Previous Page',
-                    onPressed: _notebookController.currentPageIndex > 0
-                        ? () => _notebookController
-                            .goToPage(_notebookController.currentPageIndex - 1)
-                        : null,
-                  ),
-                  Text(
-                    '$currentPageNum / $totalPages',
+              // Page Count badge & Add Page button
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Center(
+                  child: Text(
+                    '$totalPages ${totalPages == 1 ? 'Page' : 'Pages'}',
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w600,
+                      fontSize: 13,
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.chevron_right, color: Colors.white),
-                    tooltip: 'Next Page',
-                    onPressed: _notebookController.currentPageIndex <
-                            totalPages - 1
-                        ? () => _notebookController
-                            .goToPage(_notebookController.currentPageIndex + 1)
-                        : null,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.add_box_outlined, color: Colors.white),
-                    tooltip: 'Add Page',
-                    onPressed: _notebookController.addPage,
-                  ),
-                ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.add_box_outlined, color: Colors.white),
+                tooltip: 'Add Page',
+                onPressed: _notebookController.addPage,
               ),
 
               // Page Template Picker (Blank, Ruled, Grid)

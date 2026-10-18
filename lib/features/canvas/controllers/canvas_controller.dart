@@ -4,17 +4,47 @@ import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:open_note/core/constants/app_constants.dart';
 import 'package:open_note/core/theme/app_colors.dart';
+import 'package:open_note/features/canvas/controllers/rich_text_editing_controller.dart';
+import 'package:open_note/features/canvas/models/canvas_history_snapshot.dart';
+import 'package:open_note/features/canvas/models/note_text_box.dart';
+import 'package:open_note/features/canvas/models/rich_text_span.dart';
 import 'package:open_note/features/canvas/models/stroke.dart';
 import 'package:open_note/features/canvas/models/stroke_point.dart';
 import 'package:open_note/features/canvas/models/tool_type.dart';
 import 'package:open_note/features/canvas/presentation/widgets/selection_toolbar.dart';
 import 'package:open_note/features/canvas/services/eraser_service.dart';
 import 'package:open_note/features/canvas/services/lasso_service.dart';
+import 'package:open_note/features/notebook/models/note_page.dart';
 
 class CanvasController extends ChangeNotifier {
-  List<Stroke> _strokes = [];
-  final List<List<Stroke>> _undoStack = [];
-  final List<List<Stroke>> _redoStack = [];
+  List<NotePage> _pages = [
+    NotePage(id: 'page_1', pageNumber: 1),
+  ];
+  int _activePageIndex = 0;
+  String? _activeTextBoxId;
+  RichTextEditingController? _activeRichTextController;
+
+  final List<CanvasHistorySnapshot> _undoStack = [];
+  final List<CanvasHistorySnapshot> _redoStack = [];
+
+  NotePage get activePage {
+    if (_pages.isEmpty) {
+      _pages = [NotePage(id: 'page_1', pageNumber: 1)];
+      _activePageIndex = 0;
+    }
+    final idx = _activePageIndex.clamp(0, _pages.length - 1);
+    return _pages[idx];
+  }
+
+  List<Stroke> get _strokes => activePage.strokes;
+  set _strokes(List<Stroke> val) {
+    activePage.strokes = val;
+  }
+
+  List<NoteTextBox> get _textBoxes => activePage.textBoxes;
+  set _textBoxes(List<NoteTextBox> val) {
+    activePage.textBoxes = val;
+  }
 
   ToolType _activeTool = ToolType.pen;
   Color _penColor = Colors.black;
@@ -67,6 +97,126 @@ class CanvasController extends ChangeNotifier {
   final List<Color> _customColors = [];
 
   List<Stroke> get strokes => List.unmodifiable(_strokes);
+  List<NotePage> get pages => List.unmodifiable(_pages);
+  int get activePageIndex => _activePageIndex;
+
+  void setActivePage(int index) {
+    if (index < 0 || index >= _pages.length) return;
+    if (_activePageIndex == index) return;
+    deselect();
+    _activePageIndex = index;
+    notifyListeners();
+  }
+
+  NotePage addPage() {
+    _recordHistory();
+    _redoStack.clear();
+    final newPage = NotePage(
+      id: 'page_${DateTime.now().millisecondsSinceEpoch}',
+      pageNumber: _pages.length + 1,
+    );
+    _pages = [..._pages, newPage];
+    _activePageIndex = _pages.length - 1;
+    notifyListeners();
+    return newPage;
+  }
+
+  void deletePage(int index) {
+    if (_pages.length <= 1) return;
+    _recordHistory();
+    _redoStack.clear();
+    final updated = List<NotePage>.from(_pages);
+    updated.removeAt(index);
+    for (int i = 0; i < updated.length; i++) {
+      updated[i] = updated[i].copyWith(pageNumber: i + 1);
+    }
+    _pages = updated;
+    if (_activePageIndex >= _pages.length) {
+      _activePageIndex = _pages.length - 1;
+    }
+    notifyListeners();
+  }
+
+  void loadPages(List<NotePage> pages, {bool clearHistory = false}) {
+    if (clearHistory) {
+      _undoStack.clear();
+      _redoStack.clear();
+    } else {
+      _recordHistory();
+      _redoStack.clear();
+    }
+    _pages = pages.isNotEmpty
+        ? pages.map((p) => p.clone()).toList()
+        : [NotePage(id: 'page_1', pageNumber: 1)];
+    _activePageIndex = 0;
+    _activeTextBoxId = null;
+    _activeRichTextController = null;
+    deselect();
+    notifyListeners();
+  }
+
+  RichTextEditingController? get activeRichTextController =>
+      _activeRichTextController;
+
+  void setActiveRichTextController(RichTextEditingController? ctrl) {
+    if (_activeRichTextController == ctrl) return;
+    _activeRichTextController = ctrl;
+    notifyListeners();
+  }
+
+  void toggleBold() {
+    _activeRichTextController?.toggleBold();
+    notifyListeners();
+  }
+
+  void toggleItalic() {
+    _activeRichTextController?.toggleItalic();
+    notifyListeners();
+  }
+
+  void toggleUnderline() {
+    _activeRichTextController?.toggleUnderline();
+    notifyListeners();
+  }
+
+  void toggleStrikethrough() {
+    _activeRichTextController?.toggleStrikethrough();
+    notifyListeners();
+  }
+
+  void setHeading(HeadingLevel heading) {
+    _activeRichTextController?.setHeading(heading);
+    notifyListeners();
+  }
+
+  void setTextHighlight(Color? color) {
+    _activeRichTextController?.setTextHighlight(color);
+    notifyListeners();
+  }
+
+  void deleteActiveTextBox() {
+    if (_activeTextBoxId != null) {
+      deleteTextBox(_activeTextBoxId!);
+    }
+  }
+
+  void unfocusActiveTextBox() {
+    selectTextBox(null);
+    setActiveRichTextController(null);
+  }
+
+  List<NoteTextBox> get textBoxes => List.unmodifiable(_textBoxes);
+  String? get activeTextBoxId => _activeTextBoxId;
+  NoteTextBox? get activeTextBox {
+    if (_activeTextBoxId == null) return null;
+    for (final page in _pages) {
+      for (final box in page.textBoxes) {
+        if (box.id == _activeTextBoxId) return box;
+      }
+    }
+    return null;
+  }
+
   List<Color> get customColors => List.unmodifiable(_customColors);
   ToolType get activeTool => _activeTool;
   Color get activeColor =>
@@ -92,10 +242,106 @@ class CanvasController extends ChangeNotifier {
         (buttons & kSecondaryStylusButton != 0);
   }
 
+  void _cleanUpEmptyTextBoxes({String? exceptId}) {
+    for (final page in _pages) {
+      page.textBoxes = page.textBoxes.where((box) {
+        if (box.id == exceptId) return true;
+        return box.text.trim().isNotEmpty;
+      }).toList();
+    }
+  }
+
+  void selectTextBox(String? id) {
+    if (_activeTextBoxId == id) return;
+    _cleanUpEmptyTextBoxes(exceptId: id);
+    _activeTextBoxId = id;
+    notifyListeners();
+  }
+
+  static int _nextTextBoxId = 0;
+
+  NoteTextBox addTextBox(
+    Offset position, {
+    String text = '',
+    double width = 300.0,
+    int? pageIndex,
+  }) {
+    _cleanUpEmptyTextBoxes();
+    _recordHistory();
+    _redoStack.clear();
+    final targetPage = pageIndex != null &&
+            pageIndex >= 0 &&
+            pageIndex < _pages.length
+        ? _pages[pageIndex]
+        : activePage;
+    final newBox = NoteTextBox(
+      id: 'box_${DateTime.now().microsecondsSinceEpoch}_${_nextTextBoxId++}',
+      position: position,
+      width: width,
+      text: text,
+    );
+    targetPage.textBoxes = [...targetPage.textBoxes, newBox];
+    _activeTextBoxId = newBox.id;
+    notifyListeners();
+    return newBox;
+  }
+
+  void updateTextBox(NoteTextBox updated) {
+    for (final page in _pages) {
+      final idx = page.textBoxes.indexWhere((b) => b.id == updated.id);
+      if (idx != -1) {
+        final newBoxes = List<NoteTextBox>.from(page.textBoxes);
+        newBoxes[idx] = updated;
+        page.textBoxes = newBoxes;
+        notifyListeners();
+        return;
+      }
+    }
+  }
+
+  void updateTextBoxPosition(String id, Offset newPosition) {
+    for (final page in _pages) {
+      final idx = page.textBoxes.indexWhere((b) => b.id == id);
+      if (idx != -1) {
+        page.textBoxes[idx].position = newPosition;
+        notifyListeners();
+        return;
+      }
+    }
+  }
+
+  void commitTextBoxTransform() {
+    _recordHistory();
+    _redoStack.clear();
+  }
+
+  void deleteTextBox(String id) {
+    _recordHistory();
+    _redoStack.clear();
+    for (final page in _pages) {
+      page.textBoxes = page.textBoxes.where((b) => b.id != id).toList();
+    }
+    if (_activeTextBoxId == id) {
+      _activeTextBoxId = null;
+      _activeRichTextController = null;
+    }
+    notifyListeners();
+  }
+
+  void loadTextBoxes(List<NoteTextBox> boxes) {
+    _textBoxes = List.from(boxes);
+    _activeTextBoxId = null;
+    _activeRichTextController = null;
+    notifyListeners();
+  }
+
   void setTool(ToolType tool) {
     if (_activeTool == tool) return;
     if (_activeTool == ToolType.lasso) {
       deselect();
+    }
+    if (_activeTool == ToolType.text && tool != ToolType.text) {
+      selectTextBox(null);
     }
     _activeTool = tool;
     _isDrawing = false;
@@ -313,6 +559,40 @@ class CanvasController extends ChangeNotifier {
     }
 
     if (_isMultiTouch) return;
+
+    // Unfocus active text box if clicking outside with a different tool
+    if (_activeTextBoxId != null && _activeTool != ToolType.text) {
+      final box = activeTextBox;
+      if (box == null || !box.bounds.inflate(16.0).contains(localPosition)) {
+        unfocusActiveTextBox();
+      }
+    }
+
+    // Text box tool handling
+    if (_activeTool == ToolType.text) {
+      _drawingPointerId = pointer;
+      NoteTextBox? hit;
+      for (final box in _textBoxes.reversed) {
+        if (box.bounds.inflate(12.0).contains(localPosition)) {
+          hit = box;
+          break;
+        }
+      }
+      if (hit != null) {
+        selectTextBox(hit.id);
+      } else {
+        final clampedX = localPosition.dx.clamp(
+          16.0,
+          AppConstants.defaultPageSize.width - 240.0,
+        );
+        final clampedY = localPosition.dy.clamp(
+          16.0,
+          AppConstants.defaultPageSize.height - 80.0,
+        );
+        addTextBox(Offset(clampedX, clampedY));
+      }
+      return;
+    }
 
     // 3. Inverted stylus tail automatically acts as an eraser
     if (kind == PointerDeviceKind.invertedStylus && !_activeTool.isEraser) {
@@ -850,37 +1130,74 @@ class CanvasController extends ChangeNotifier {
       _eraserGestureDidModify = false;
     }
     if (_undoStack.isEmpty) return;
-    _redoStack.add(List.from(_strokes));
-    _strokes = _undoStack.removeLast();
+    _redoStack.add(CanvasHistorySnapshot(
+      pages: _pages.map((p) => p.clone()).toList(),
+      activePageIndex: _activePageIndex,
+    ));
+    final prev = _undoStack.removeLast();
+    _pages = prev.pages.map((p) => p.clone()).toList();
+    _activePageIndex = prev.activePageIndex.clamp(0, _pages.length - 1);
+    _activeTextBoxId = null;
+    _activeRichTextController = null;
     notifyListeners();
   }
 
   void redo() {
     deselect();
     if (_redoStack.isEmpty) return;
-    _undoStack.add(List.from(_strokes));
-    _strokes = _redoStack.removeLast();
+    _undoStack.add(CanvasHistorySnapshot(
+      pages: _pages.map((p) => p.clone()).toList(),
+      activePageIndex: _activePageIndex,
+    ));
+    final next = _redoStack.removeLast();
+    _pages = next.pages.map((p) => p.clone()).toList();
+    _activePageIndex = next.activePageIndex.clamp(0, _pages.length - 1);
+    _activeTextBoxId = null;
+    _activeRichTextController = null;
     notifyListeners();
   }
 
   void clear() {
     deselect();
-    if (_strokes.isEmpty) return;
+    if (activePage.strokes.isEmpty && activePage.textBoxes.isEmpty) return;
     _recordHistory();
-    _strokes = [];
+    activePage.strokes = [];
+    activePage.textBoxes = [];
+    _activeTextBoxId = null;
+    _activeRichTextController = null;
     _redoStack.clear();
     notifyListeners();
   }
 
-  void _recordSnapshot(List<Stroke> snapshot) {
-    _undoStack.add(List.from(snapshot));
+  void _recordSnapshot(
+    List<Stroke> strokeSnapshot, {
+    List<NoteTextBox>? textBoxSnapshot,
+  }) {
+    final clonedPages = _pages.map((p) => p.clone()).toList();
+    if (_activePageIndex < clonedPages.length) {
+      clonedPages[_activePageIndex].strokes = List.from(strokeSnapshot);
+      if (textBoxSnapshot != null) {
+        clonedPages[_activePageIndex].textBoxes =
+            textBoxSnapshot.map((b) => b.copyWith()).toList();
+      }
+    }
+    _undoStack.add(CanvasHistorySnapshot(
+      pages: clonedPages,
+      activePageIndex: _activePageIndex,
+    ));
     if (_undoStack.length > 50) {
       _undoStack.removeAt(0);
     }
   }
 
   void _recordHistory() {
-    _recordSnapshot(_strokes);
+    _undoStack.add(CanvasHistorySnapshot(
+      pages: _pages.map((p) => p.clone()).toList(),
+      activePageIndex: _activePageIndex,
+    ));
+    if (_undoStack.length > 50) {
+      _undoStack.removeAt(0);
+    }
   }
 
   @override

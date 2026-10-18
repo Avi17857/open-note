@@ -41,14 +41,14 @@ OpenNote bridges the gap between the fluid inking experience of **Samsung Notes*
 
 ## Milestone 3: Freeform Rich Text Engine
 *(Documented in [`docs/architecture/rich_text_engine.md`](file:///d:/flutter-dev/projects/open_note/docs/architecture/rich_text_engine.md))*
-- [ ] **Attributed-Span Model:**
+- [x] **Attributed-Span Model:**
   - `RichTextSpan` and `NoteTextBox` models with JSON serialization/deserialization.
   - Native `RichTextEditingController` with boundary slicing and real-time formatting.
-- [ ] **Classic Formatting Toolbar:**
+- [x] **Classic Formatting Toolbar:**
   - Inline toggles: Bold, Italic, Underline, Strikethrough.
   - Heading selector: Body, H1, H2, H3.
   - Text color and background highlighter picker.
-- [ ] **Canvas Text Container:**
+- [x] **Canvas Text Container:**
   - `T` (Text) tool on main toolbar: tap canvas to spawn a new text box.
   - Borderless editing with subtle drag-handles to move and resize anywhere on the page.
   - Native soft-keyboard and Samsung S-Pen handwriting-to-text integration.

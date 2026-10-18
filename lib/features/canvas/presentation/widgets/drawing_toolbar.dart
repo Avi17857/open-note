@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:open_note/core/theme/app_colors.dart';
 import 'package:open_note/features/canvas/controllers/canvas_controller.dart';
+import 'package:open_note/features/canvas/models/rich_text_span.dart';
 import 'package:open_note/features/canvas/models/tool_type.dart';
 import 'package:open_note/features/canvas/presentation/widgets/custom_color_picker_dialog.dart';
 import 'package:open_note/features/canvas/presentation/widgets/eraser_radius_picker.dart';
@@ -233,6 +234,113 @@ class DrawingToolbar extends StatelessWidget {
                   ],
                 ],
 
+                // Text Tool Formatting Bar (docked in top toolbar)
+                if (activeTool == ToolType.text) ...[
+                  // 1. Heading Selector Dropdown
+                  _buildHeadingDropdown(context),
+
+                  const SizedBox(width: 8),
+
+                  // 2. Inline Style Toggles: B, I, U, S
+                  _buildFormatToggleBtn(
+                    label: 'B',
+                    tooltip: 'Bold',
+                    isBold: true,
+                    isActive: controller.activeRichTextController?.isSelectionBold ?? false,
+                    onTap: controller.toggleBold,
+                  ),
+                  const SizedBox(width: 4),
+                  _buildFormatToggleBtn(
+                    label: 'I',
+                    tooltip: 'Italic',
+                    isItalic: true,
+                    isActive: controller.activeRichTextController?.isSelectionItalic ?? false,
+                    onTap: controller.toggleItalic,
+                  ),
+                  const SizedBox(width: 4),
+                  _buildFormatToggleBtn(
+                    label: 'U',
+                    tooltip: 'Underline',
+                    isUnderline: true,
+                    isActive: controller.activeRichTextController?.isSelectionUnderline ?? false,
+                    onTap: controller.toggleUnderline,
+                  ),
+                  const SizedBox(width: 4),
+                  _buildFormatToggleBtn(
+                    label: 'S',
+                    tooltip: 'Strikethrough',
+                    isStrikethrough: true,
+                    isActive: controller.activeRichTextController?.isSelectionStrikethrough ?? false,
+                    onTap: controller.toggleStrikethrough,
+                  ),
+
+                  const SizedBox(width: 8),
+                  const VerticalDivider(width: 1, indent: 8, endIndent: 8),
+                  const SizedBox(width: 8),
+
+                  // 3. Text Font Color Picker Menu
+                  _buildTextColorMenu(context),
+
+                  const SizedBox(width: 4),
+
+                  // 4. Text Highlight Color Menu
+                  _buildTextHighlightMenu(context),
+
+                  const SizedBox(width: 8),
+                  const VerticalDivider(width: 1, indent: 8, endIndent: 8),
+                  const SizedBox(width: 8),
+
+                  // 5. Spawn new text box button
+                  Tooltip(
+                    message: 'Add new text box',
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.add_rounded, size: 18),
+                      label: const Text('Add Box', style: TextStyle(fontSize: 12)),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        visualDensity: VisualDensity.compact,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      onPressed: () {
+                        controller.addTextBox(const Offset(80, 100));
+                      },
+                    ),
+                  ),
+
+                  // 6. Delete & Done buttons (if a text box is focused)
+                  if (controller.activeTextBox != null) ...[
+                    const SizedBox(width: 6),
+                    Tooltip(
+                      message: 'Delete text box',
+                      child: IconButton(
+                        icon: Icon(
+                          Icons.delete_outline_rounded,
+                          size: 20,
+                          color: Colors.red.shade700,
+                        ),
+                        onPressed: controller.deleteActiveTextBox,
+                      ),
+                    ),
+                    Tooltip(
+                      message: 'Done / Deselect',
+                      child: IconButton(
+                        icon: const Icon(
+                          Icons.check_rounded,
+                          size: 20,
+                          color: Color(0xFF007AFF),
+                        ),
+                        onPressed: controller.unfocusActiveTextBox,
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(width: 12),
+                  const VerticalDivider(width: 1, indent: 8, endIndent: 8),
+                  const SizedBox(width: 12),
+                ],
+
                 // Color Palette Dots & Custom Color Picker (for drawing and recoloring selection)
                 if (isDrawing ||
                     (activeTool == ToolType.lasso &&
@@ -382,6 +490,226 @@ class DrawingToolbar extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildHeadingDropdown(BuildContext context) {
+    final currentHeading =
+        controller.activeRichTextController?.currentHeading ?? HeadingLevel.none;
+
+    return PopupMenuButton<HeadingLevel>(
+      tooltip: 'Heading style',
+      initialValue: currentHeading,
+      onSelected: controller.setHeading,
+      padding: EdgeInsets.zero,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              currentHeading == HeadingLevel.none
+                  ? 'Body'
+                  : currentHeading.name.toUpperCase(),
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+            ),
+            const Icon(Icons.arrow_drop_down, size: 16),
+          ],
+        ),
+      ),
+      itemBuilder: (context) => [
+        const PopupMenuItem(
+          value: HeadingLevel.none,
+          child: Text('Body (Regular)'),
+        ),
+        const PopupMenuItem(
+          value: HeadingLevel.h1,
+          child: Text(
+            'H1 - Heading 1',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+          ),
+        ),
+        const PopupMenuItem(
+          value: HeadingLevel.h2,
+          child: Text(
+            'H2 - Heading 2',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+        ),
+        const PopupMenuItem(
+          value: HeadingLevel.h3,
+          child: Text(
+            'H3 - Heading 3',
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFormatToggleBtn({
+    required String label,
+    required bool isActive,
+    required VoidCallback onTap,
+    required String tooltip,
+    bool isBold = false,
+    bool isItalic = false,
+    bool isUnderline = false,
+    bool isStrikethrough = false,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: isActive
+                ? const Color(0xFF007AFF).withValues(alpha: 0.15)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: isActive ? const Color(0xFF007AFF) : Colors.grey.shade300,
+              width: 1,
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: isBold ? FontWeight.bold : FontWeight.w600,
+              fontStyle: isItalic ? FontStyle.italic : FontStyle.normal,
+              decoration: TextDecoration.combine([
+                if (isUnderline) TextDecoration.underline,
+                if (isStrikethrough) TextDecoration.lineThrough,
+              ]),
+              color: isActive ? const Color(0xFF007AFF) : Colors.black87,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextColorMenu(BuildContext context) {
+    const colors = [
+      Colors.black,
+      Color(0xFFD32F2F), // Red
+      Color(0xFF1976D2), // Blue
+      Color(0xFF388E3C), // Green
+      Color(0xFF7B1FA2), // Purple
+      Color(0xFFF57C00), // Orange
+    ];
+
+    return PopupMenuButton<Color>(
+      tooltip: 'Font Color',
+      onSelected: controller.setColor,
+      padding: EdgeInsets.zero,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.format_color_text_rounded, size: 16, color: Colors.black87),
+            const SizedBox(width: 4),
+            Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                color: controller.activeColor,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ],
+        ),
+      ),
+      itemBuilder: (context) => colors.map((c) {
+        return PopupMenuItem<Color>(
+          value: c,
+          child: Row(
+            children: [
+              Container(
+                width: 16,
+                height: 16,
+                decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                c == Colors.black
+                    ? 'Black'
+                    : '#${c.toARGB32().toRadixString(16).substring(2).toUpperCase()}',
+                style: const TextStyle(fontSize: 13),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildTextHighlightMenu(BuildContext context) {
+    final highlights = [
+      null,
+      AppColors.highlighterPalette[0], // Yellow
+      AppColors.highlighterPalette[1], // Green
+      AppColors.highlighterPalette[2], // Cyan
+      AppColors.highlighterPalette[3], // Pink
+      AppColors.highlighterPalette[4], // Orange
+    ];
+
+    return PopupMenuButton<Color?>(
+      tooltip: 'Highlight Background',
+      onSelected: controller.setTextHighlight,
+      padding: EdgeInsets.zero,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: const Icon(Icons.border_color_rounded, size: 16, color: Colors.black87),
+      ),
+      itemBuilder: (context) => highlights.map((c) {
+        return PopupMenuItem<Color?>(
+          value: c,
+          child: Row(
+            children: [
+              Container(
+                width: 16,
+                height: 16,
+                decoration: BoxDecoration(
+                  color: c ?? Colors.white,
+                  border: Border.all(color: Colors.grey.shade400),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                c == null ? 'None (Clear)' : 'Highlight',
+                style: const TextStyle(fontSize: 13),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
     );
   }
 }

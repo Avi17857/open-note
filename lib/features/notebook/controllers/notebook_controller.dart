@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:open_note/features/canvas/controllers/canvas_controller.dart';
 import 'package:open_note/features/notebook/models/note_document.dart';
@@ -18,13 +19,44 @@ class NotebookController extends ChangeNotifier {
     NoteStorageService? storageService,
   }) : _storageService = storageService ?? NoteStorageService() {
     _initDefaultNote();
+    canvasController.addListener(_onCanvasChanged);
+  }
+
+  void _onCanvasChanged() {
+    final pageCountChanged =
+        _currentNote.pages.length != canvasController.pages.length;
+    final activeIndexChanged =
+        _currentPageIndex != canvasController.activePageIndex;
+
+    if (pageCountChanged || activeIndexChanged) {
+      _currentNote.pages =
+          canvasController.pages.map((p) => p.clone()).toList();
+      _currentPageIndex = canvasController.activePageIndex;
+      _currentNote.updatedAt = DateTime.now();
+
+      scheduleMicrotask(() {
+        notifyListeners();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    canvasController.removeListener(_onCanvasChanged);
+    super.dispose();
   }
 
   List<NoteDocument> get notes => List.unmodifiable(_notes);
   NoteDocument get currentNote => _currentNote;
   int get currentPageIndex => _currentPageIndex;
   bool get isLoading => _isLoading;
-  NotePage get currentPage => _currentNote.pages[_currentPageIndex];
+  NotePage get currentPage {
+    if (_currentPageIndex >= 0 &&
+        _currentPageIndex < _currentNote.pages.length) {
+      return _currentNote.pages[_currentPageIndex];
+    }
+    return _currentNote.pages.first;
+  }
 
   void _initDefaultNote() {
     _currentNote = NoteDocument(
@@ -33,18 +65,19 @@ class NotebookController extends ChangeNotifier {
     );
     _notes = [_currentNote];
     _currentPageIndex = 0;
+    canvasController.loadPages(_currentNote.pages, clearHistory: true);
   }
 
   void setCurrentNote(NoteDocument note) {
-    _syncCurrentPageStrokes();
+    _syncCurrentNote();
     _currentNote = note;
     _currentPageIndex = 0;
-    canvasController.loadStrokes(_currentNote.pages[0].strokes, clearHistory: true);
+    canvasController.loadPages(_currentNote.pages, clearHistory: true);
     notifyListeners();
   }
 
   void createNewNote({String title = 'New Note'}) {
-    _syncCurrentPageStrokes();
+    _syncCurrentNote();
     final newNote = NoteDocument(
       id: 'note_${DateTime.now().millisecondsSinceEpoch}',
       title: title,
@@ -59,37 +92,21 @@ class NotebookController extends ChangeNotifier {
   }
 
   void addPage() {
-    _syncCurrentPageStrokes();
-    final newPage = NotePage(
-      id: 'page_${DateTime.now().millisecondsSinceEpoch}',
-      pageNumber: _currentNote.pages.length + 1,
-    );
-    _currentNote.pages.add(newPage);
-    _currentPageIndex = _currentNote.pages.length - 1;
-    canvasController.loadStrokes([], clearHistory: true);
-    notifyListeners();
+    canvasController.addPage();
   }
 
   void goToPage(int index) {
-    if (index < 0 || index >= _currentNote.pages.length || index == _currentPageIndex) {
-      return;
-    }
-    _syncCurrentPageStrokes();
-    _currentPageIndex = index;
-    canvasController.loadStrokes(_currentNote.pages[index].strokes, clearHistory: true);
-    notifyListeners();
+    canvasController.setActivePage(index);
   }
 
-  void _syncCurrentPageStrokes() {
-    if (_currentPageIndex < _currentNote.pages.length) {
-      _currentNote.pages[_currentPageIndex].strokes =
-          List.from(canvasController.strokes);
-      _currentNote.updatedAt = DateTime.now();
-    }
+  void _syncCurrentNote() {
+    _currentNote.pages =
+        canvasController.pages.map((p) => p.clone()).toList();
+    _currentNote.updatedAt = DateTime.now();
   }
 
   Future<void> saveCurrentNote() async {
-    _syncCurrentPageStrokes();
+    _syncCurrentNote();
     _isLoading = true;
     notifyListeners();
 
@@ -117,3 +134,4 @@ class NotebookController extends ChangeNotifier {
     }
   }
 }
+

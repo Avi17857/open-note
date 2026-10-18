@@ -4,6 +4,7 @@ enum ToolType {
   pen,
   fountainPen,
   highlighter,
+  text,
   strokeEraser,
   areaEraser,
   lasso,
@@ -16,6 +17,7 @@ extension ToolTypeExtension on ToolType {
       ToolType.pen => 'Ballpoint',
       ToolType.fountainPen => 'Fountain Pen',
       ToolType.highlighter => 'Highlighter',
+      ToolType.text => 'Text Box',
       ToolType.strokeEraser => 'Stroke Eraser',
       ToolType.areaEraser => 'Area Eraser',
       ToolType.lasso => 'Lasso Select',
@@ -28,6 +30,7 @@ extension ToolTypeExtension on ToolType {
       ToolType.pen => Icons.edit,
       ToolType.fountainPen => Icons.draw,
       ToolType.highlighter => Icons.brush,
+      ToolType.text => Icons.text_fields_rounded,
       ToolType.strokeEraser => Icons.auto_fix_normal,
       ToolType.areaEraser => Icons.cleaning_services,
       ToolType.lasso => Icons.gesture,
@@ -44,4 +47,6 @@ extension ToolTypeExtension on ToolType {
       this == ToolType.highlighter;
 
   bool get isLasso => this == ToolType.lasso;
+
+  bool get isText => this == ToolType.text;
 }
