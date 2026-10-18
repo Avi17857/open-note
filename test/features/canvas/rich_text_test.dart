@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:open_note/features/canvas/controllers/canvas_controller.dart';
@@ -5,6 +6,8 @@ import 'package:open_note/features/canvas/controllers/rich_text_editing_controll
 import 'package:open_note/features/canvas/models/note_text_box.dart';
 import 'package:open_note/features/canvas/models/rich_text_span.dart';
 import 'package:open_note/features/canvas/models/tool_type.dart';
+import 'package:open_note/features/canvas/presentation/note_canvas.dart';
+import 'package:open_note/features/canvas/presentation/widgets/text_box_widget.dart';
 
 void main() {
   group('RichTextSpan & NoteTextBox Serialization', () {
@@ -294,6 +297,198 @@ void main() {
       // Box is preserved because it has text!
       expect(canvasController.textBoxes.length, 1);
       expect(canvasController.textBoxes.first.text, 'Important Note');
+    });
+
+    test('CanvasController formatting methods apply to active rich text controller', () {
+      final box = canvasController.addTextBox(const Offset(50, 50), text: 'Lecture Notes');
+      final richCtrl = RichTextEditingController(text: box.text);
+      canvasController.setActiveRichTextController(richCtrl);
+
+      // A. When no text is selected: setting style sets typing style but does NOT alter existing text spans
+      canvasController.setHeading(HeadingLevel.h1);
+      expect(richCtrl.currentHeading, HeadingLevel.h1);
+      expect(richCtrl.spans, isEmpty); // Existing text is untouched!
+
+      canvasController.setTextColor(Colors.red);
+      expect(richCtrl.currentTextColor, Colors.red);
+      expect(richCtrl.spans, isEmpty); // Existing text is untouched!
+
+      canvasController.setTextHighlight(Colors.yellow);
+      expect(richCtrl.currentHighlightColor, Colors.yellow);
+      expect(richCtrl.spans, isEmpty); // Existing text is untouched!
+
+      canvasController.toggleBold();
+      expect(richCtrl.isSelectionBold, isTrue);
+      expect(richCtrl.spans, isEmpty); // Existing text is untouched!
+
+      // B. When text IS selected: setting style applies to highlighted text
+      richCtrl.selection = const TextSelection(baseOffset: 0, extentOffset: 7); // "Lecture"
+      canvasController.setHeading(HeadingLevel.h2);
+      canvasController.setTextColor(Colors.blue);
+      expect(richCtrl.spans.isNotEmpty, isTrue);
+      expect(richCtrl.spans.first.heading, HeadingLevel.h2);
+      expect(richCtrl.spans.first.color, Colors.blue);
+    });
+
+    test('Attribute slicing fills gaps across multiple words', () {
+      final richCtrl = RichTextEditingController(
+        text: 'The quick brown fox',
+        spans: [
+          // "quick" (4..9) is bold
+          const RichTextSpan(start: 4, end: 9, bold: true),
+        ],
+      );
+
+      // Select entire text (0..19) and make italic
+      richCtrl.selection = const TextSelection(baseOffset: 0, extentOffset: 19);
+      richCtrl.toggleItalic();
+
+      // All parts: [0, 4], [4, 9], [9, 19] should be italic!
+      expect(richCtrl.spans.length, 3);
+      expect(richCtrl.spans[0].italic, isTrue); // "The "
+      expect(richCtrl.spans[1].italic, isTrue); // "quick"
+      expect(richCtrl.spans[1].bold, isTrue);
+      expect(richCtrl.spans[2].italic, isTrue); // " brown fox"
+    });
+  });
+
+  group('NoteCanvas Text Box Pasteboard & Expansion Widget Tests', () {
+    testWidgets('Text box can be dragged to pasteboard outside page and dragged back', (tester) async {
+      tester.view.physicalSize = const Size(1200, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final controller = CanvasController();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: NoteCanvas(controller: controller),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Add a text box on the canvas page at (80, 100)
+      controller.setTool(ToolType.text);
+      final box = controller.addTextBox(const Offset(80, 100), text: 'Movable Pasteboard Note');
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TextBoxWidget), findsOneWidget);
+
+      // Drag the text box far out into the left pasteboard (x = -150)
+      controller.updateTextBoxPosition(box.id, const Offset(-150, 100));
+      await tester.pumpAndSettle();
+
+      expect(box.position.dx, -150.0);
+
+      // In the pasteboard, the full-height resize handle is interactive!
+      final resizeHandle = find.byKey(const Key('text_box_resize_handle'));
+      expect(resizeHandle, findsOneWidget);
+
+      // Resize the box by dragging the resize handle
+      final center = tester.getCenter(resizeHandle);
+      final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await gesture.addPointer(location: center);
+      await tester.pump();
+      await gesture.down(center);
+      await tester.pump();
+      await gesture.moveBy(const Offset(80, 0));
+      await tester.pump();
+      await gesture.moveBy(const Offset(80, 0));
+      await tester.pump();
+      await gesture.up();
+      await gesture.removePointer();
+      await tester.pumpAndSettle();
+
+      expect(controller.textBoxes.first.width, greaterThanOrEqualTo(370.0));
+
+      // Drag box back from pasteboard onto the page using the drag handle
+      final dragHandle = find.byKey(const Key('text_box_drag_handle'));
+      expect(dragHandle, findsOneWidget);
+      final dragCenter = tester.getCenter(dragHandle);
+      final moveGesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await moveGesture.addPointer(location: dragCenter);
+      await tester.pump();
+      await moveGesture.down(dragCenter);
+      await tester.pump();
+      await moveGesture.moveBy(const Offset(100, 0));
+      await tester.pump();
+      await moveGesture.moveBy(const Offset(100, 0));
+      await tester.pump();
+      await moveGesture.moveBy(const Offset(100, 0));
+      await tester.pump();
+      await moveGesture.up();
+      await moveGesture.removePointer();
+      await tester.pumpAndSettle();
+
+      expect(controller.textBoxes.first.position.dx, greaterThanOrEqualTo(0.0));
+      expect(controller.textBoxes.length, 1);
+    });
+
+    testWidgets('Text box does not shift position or change text field position when focused vs unfocused', (tester) async {
+      tester.view.physicalSize = const Size(1200, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final controller = CanvasController();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: NoteCanvas(controller: controller),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      controller.setTool(ToolType.text);
+      final box = controller.addTextBox(const Offset(120, 150), text: 'Exact Alignment Note\nSecond line');
+      await tester.pumpAndSettle();
+
+      // Focused state
+      expect(controller.activeTextBoxId, box.id);
+      final textFieldFinder = find.byType(TextField);
+      expect(textFieldFinder, findsOneWidget);
+      final focusedTopLeft = tester.getTopLeft(textFieldFinder);
+      final focusedSize = tester.getSize(textFieldFinder);
+
+      // Unfocus the text box
+      controller.unfocusActiveTextBox();
+      await tester.pumpAndSettle();
+
+      expect(controller.activeTextBoxId, isNull);
+      final unfocusedTopLeft = tester.getTopLeft(textFieldFinder);
+      final unfocusedSize = tester.getSize(textFieldFinder);
+
+      // Verify ZERO pixel shift or size change!
+      expect(unfocusedTopLeft.dx, focusedTopLeft.dx);
+      expect(unfocusedTopLeft.dy, focusedTopLeft.dy);
+      expect(unfocusedSize.width, focusedSize.width);
+      expect(unfocusedSize.height, focusedSize.height);
+    });
+
+    test('Typing after setting heading or color without selection applies style to newly typed text without modifying previous text', () {
+      final richCtrl = RichTextEditingController(text: 'Normal text ');
+      expect(richCtrl.spans, isEmpty);
+
+      // Switch to Heading 1 without selecting anything (collapsed cursor at end)
+      richCtrl.selection = const TextSelection.collapsed(offset: 12);
+      richCtrl.setHeading(HeadingLevel.h1);
+
+      // Existing text remains untouched!
+      expect(richCtrl.spans, isEmpty);
+      expect(richCtrl.currentHeading, HeadingLevel.h1);
+
+      // Type "H1 Title"
+      richCtrl.value = const TextEditingValue(
+        text: 'Normal text H1 Title',
+        selection: TextSelection.collapsed(offset: 20),
+      );
+
+      // Only the newly typed text (12..20) has HeadingLevel.h1!
+      expect(richCtrl.spans.length, 1);
+      expect(richCtrl.spans.first.start, 12);
+      expect(richCtrl.spans.first.end, 20);
+      expect(richCtrl.spans.first.heading, HeadingLevel.h1);
     });
   });
 }

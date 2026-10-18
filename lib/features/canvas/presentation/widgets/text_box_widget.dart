@@ -1,9 +1,9 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:open_note/core/constants/app_constants.dart';
 import 'package:open_note/features/canvas/controllers/canvas_controller.dart';
 import 'package:open_note/features/canvas/controllers/rich_text_editing_controller.dart';
 import 'package:open_note/features/canvas/models/note_text_box.dart';
+import 'package:open_note/features/canvas/presentation/widgets/unbounded_hit_test.dart';
 
 /// An interactive, movable, and resizable rich text box placed directly on the canvas page.
 class TextBoxWidget extends StatefulWidget {
@@ -78,10 +78,6 @@ class _TextBoxWidgetState extends State<TextBoxWidget> {
     if (_focusNode.hasFocus) {
       widget.controller.selectTextBox(widget.textBox.id);
       widget.controller.setActiveRichTextController(widget.richController);
-    } else {
-      if (widget.controller.activeTextBoxId == widget.textBox.id) {
-        widget.controller.setActiveRichTextController(null);
-      }
     }
   }
 
@@ -100,112 +96,138 @@ class _TextBoxWidgetState extends State<TextBoxWidget> {
     final renderLeft = widget.boardPosition?.dx ?? box.position.dx;
     final renderTop = widget.boardPosition?.dy ?? box.position.dy;
 
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final renderBox = context.findRenderObject() as RenderBox?;
+      if (renderBox != null && renderBox.hasSize) {
+        final actualHeight = renderBox.size.height;
+        if (widget.textBox.height != actualHeight) {
+          widget.textBox.height = actualHeight;
+        }
+      }
+    });
+
     return Positioned(
       left: renderLeft,
       top: renderTop,
       width: box.width,
-      child: Material(
-        color: Colors.transparent,
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.transparent, // Completely transparent so grid/ruled lines show through!
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(
-              color: isSelected ? const Color(0xFF007AFF) : Colors.transparent,
-              width: isSelected ? 1.2 : 0,
-            ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Top drag bar handle (only shown when focused/selected)
-              if (isSelected) _buildDragHandle(),
-
-              // Content row: editable text field + right-edge resize handle
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10.0,
-                        vertical: 6.0,
-                      ),
-                      child: TextField(
-                        controller: widget.richController,
-                        focusNode: _focusNode,
-                        autofocus: widget.isSelected,
-                        maxLines: null,
-                        keyboardType: TextInputType.multiline,
-                        style: const TextStyle(
-                          fontSize: 15.0,
-                          color: Colors.black87,
-                          height: 1.4,
-                        ),
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          contentPadding: EdgeInsets.zero,
-                          border: InputBorder.none,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  // Right-edge resize handle
-                  if (isSelected) _buildResizeHandle(),
-                ],
+      child: UnboundedHitTest(
+        child: UnboundedHitTestStack(
+          clipBehavior: Clip.none,
+          children: [
+            // 1. Text Content Container (Fixed anchor: Never jumps or changes width on focus)
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: isSelected ? const Color(0xFF007AFF) : Colors.transparent,
+                  width: 1.5,
+                ),
               ),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 10.0,
+                vertical: 6.0,
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: TextField(
+                  controller: widget.richController,
+                  focusNode: _focusNode,
+                  autofocus: widget.isSelected,
+                  maxLines: null,
+                  keyboardType: TextInputType.multiline,
+                  style: const TextStyle(
+                    fontSize: 15.0,
+                    color: Colors.black87,
+                    height: 1.4,
+                  ),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                    border: InputBorder.none,
+                  ),
+                ),
+              ),
+            ),
+
+              // 2. Top Drag Handle (Floats above text at top: -22, never pushing content down)
+              if (isSelected)
+                Positioned(
+                  top: -22,
+                  left: 0,
+                  right: 0,
+                  height: 20,
+                  child: _buildDragHandle(),
+                ),
+
+              // 3. Right-edge Resize Handle (Floats at right edge: -12, never shrinking content width)
+              if (isSelected)
+                Positioned(
+                  top: 0,
+                  bottom: 0,
+                  right: -12,
+                  width: 24,
+                  child: _buildResizeHandle(),
+                ),
             ],
           ),
         ),
-      ),
     );
   }
 
   /// Top pill handle to drag and move the text container on the canvas
   Widget _buildDragHandle() {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onPanStart: (details) {
-        widget.controller.beginTextBoxTransform();
-        setState(() => _isDragging = true);
-        _dragStartPos = details.globalPosition;
-        _dragInitialX = widget.textBox.position.dx;
-        _dragInitialY = widget.textBox.position.dy;
-      },
-      onPanUpdate: (details) {
-        if (!_isDragging || _dragStartPos == null) return;
-        final delta = details.globalPosition - _dragStartPos!;
-        final newX = _dragInitialX! + delta.dx;
-        final newY = _dragInitialY! + delta.dy;
-        widget.controller.updateTextBoxPosition(
-          widget.textBox.id,
-          Offset(newX, newY),
-        );
-      },
-      onPanEnd: (_) {
-        setState(() => _isDragging = false);
-        _dragStartPos = null;
-        widget.controller.transferTextBoxIfNeeded(widget.textBox.id);
-        widget.controller.commitTextBoxTransform();
-      },
-      child: Container(
-        height: 20,
-        decoration: const BoxDecoration(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(6),
-            topRight: Radius.circular(6),
-          ),
-        ),
-        child: Center(
+    return Center(
+      child: MouseRegion(
+        key: const Key('text_box_drag_handle'),
+        cursor: SystemMouseCursors.move,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onPanStart: (details) {
+            widget.controller.beginTextBoxTransform();
+            setState(() => _isDragging = true);
+            _dragStartPos = details.globalPosition;
+            _dragInitialX = widget.textBox.position.dx;
+            _dragInitialY = widget.textBox.position.dy;
+          },
+          onPanUpdate: (details) {
+            if (!_isDragging || _dragStartPos == null) return;
+            final scale = widget.controller.canvasScale;
+            final delta = (details.globalPosition - _dragStartPos!) / scale;
+            final newX = _dragInitialX! + delta.dx;
+            final newY = _dragInitialY! + delta.dy;
+            widget.controller.updateTextBoxPosition(
+              widget.textBox.id,
+              Offset(newX, newY),
+            );
+          },
+          onPanEnd: (_) {
+            setState(() => _isDragging = false);
+            _dragStartPos = null;
+            widget.controller.transferTextBoxIfNeeded(widget.textBox.id);
+            widget.controller.commitTextBoxTransform();
+          },
           child: Container(
-            width: 32,
-            height: 4,
+            width: 48,
+            height: 18,
             decoration: BoxDecoration(
-              color: const Color(0xFF007AFF).withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(2),
+              color: const Color(0xFF007AFF).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(
+                color: const Color(0xFF007AFF).withValues(alpha: 0.4),
+                width: 1.0,
+              ),
+            ),
+            child: Center(
+              child: Container(
+                width: 26,
+                height: 3.5,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF007AFF),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
             ),
           ),
         ),
@@ -213,44 +235,53 @@ class _TextBoxWidgetState extends State<TextBoxWidget> {
     );
   }
 
-  /// Right-edge vertical handle to widen or narrow the text container
+  /// Right-edge full-height handle to widen or narrow the text container reliably
   Widget _buildResizeHandle() {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onPanStart: (details) {
-        widget.controller.beginTextBoxTransform();
-        setState(() => _isResizing = true);
-        _resizeStartX = details.globalPosition.dx;
-        _resizeInitialWidth = widget.textBox.width;
-      },
-      onPanUpdate: (details) {
-        if (!_isResizing || _resizeStartX == null) return;
-        final deltaX = details.globalPosition.dx - _resizeStartX!;
-        final maxWidth = AppConstants.defaultPageSize.width -
-            widget.textBox.position.dx -
-            8.0;
-        final newWidth = max(
-          NoteTextBox.minWidth,
-          min(maxWidth, _resizeInitialWidth! + deltaX),
-        );
-        widget.textBox.width = newWidth;
-        widget.controller.updateTextBox(widget.textBox);
-      },
-      onPanEnd: (_) {
-        setState(() => _isResizing = false);
-        _resizeStartX = null;
-        widget.controller.commitTextBoxTransform();
-      },
-      child: Container(
-        width: 14,
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        alignment: Alignment.center,
+    return MouseRegion(
+      key: const Key('text_box_resize_handle'),
+      cursor: SystemMouseCursors.resizeLeftRight,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onPanStart: (details) {
+          widget.controller.beginTextBoxTransform();
+          setState(() => _isResizing = true);
+          _resizeStartX = details.globalPosition.dx;
+          _resizeInitialWidth = widget.textBox.width;
+        },
+        onPanUpdate: (details) {
+          if (!_isResizing || _resizeStartX == null) return;
+          final scale = widget.controller.canvasScale;
+          final deltaX = (details.globalPosition.dx - _resizeStartX!) / scale;
+          final newWidth = max(
+            NoteTextBox.minWidth,
+            _resizeInitialWidth! + deltaX,
+          );
+          widget.textBox.width = newWidth;
+          widget.controller.updateTextBox(widget.textBox);
+        },
+        onPanEnd: (_) {
+          setState(() => _isResizing = false);
+          _resizeStartX = null;
+          widget.controller.commitTextBoxTransform();
+        },
         child: Container(
-          width: 3,
-          height: 18,
-          decoration: BoxDecoration(
-            color: const Color(0xFF007AFF),
-            borderRadius: BorderRadius.circular(2),
+          width: 24,
+          color: Colors.transparent,
+          alignment: Alignment.center,
+          child: Container(
+            width: 4,
+            height: 26,
+            decoration: BoxDecoration(
+              color: const Color(0xFF007AFF),
+              borderRadius: BorderRadius.circular(2),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF007AFF).withValues(alpha: 0.35),
+                  blurRadius: 4,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
           ),
         ),
       ),

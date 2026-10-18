@@ -18,6 +18,7 @@ import 'package:open_note/features/canvas/presentation/painters/selection_painte
 import 'package:open_note/features/canvas/presentation/widgets/drawing_toolbar.dart';
 import 'package:open_note/features/canvas/presentation/widgets/selection_toolbar.dart';
 import 'package:open_note/features/canvas/presentation/widgets/text_box_widget.dart';
+import 'package:open_note/features/canvas/presentation/widgets/unbounded_hit_test.dart';
 import 'package:open_note/features/canvas/services/lasso_service.dart';
 
 enum OffScreenDirection {
@@ -86,11 +87,18 @@ class _NoteCanvasState extends State<NoteCanvas>
       }
     });
 
+    _transformationController.addListener(_onTransformationChanged);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _centerCanvasInViewport();
       }
     });
+  }
+
+  void _onTransformationChanged() {
+    final scale = _getScale(_transformationController.value);
+    widget.controller.setCanvasScale(scale);
   }
 
   Matrix4 _clampTransformation(Matrix4 matrix, Size viewportSize) {
@@ -205,7 +213,17 @@ class _NoteCanvasState extends State<NoteCanvas>
   RichTextEditingController _getOrCreateTextController(NoteTextBox box) {
     var ctrl = _textControllers[box.id];
     if (ctrl == null) {
-      ctrl = RichTextEditingController(text: box.text, spans: box.spans);
+      ctrl = RichTextEditingController(
+        text: box.text,
+        spans: box.spans,
+        defaultHeading: widget.controller.activeTextHeading,
+        defaultBold: widget.controller.activeTextBold,
+        defaultItalic: widget.controller.activeTextItalic,
+        defaultUnderline: widget.controller.activeTextUnderline,
+        defaultStrikethrough: widget.controller.activeTextStrikethrough,
+        defaultColor: widget.controller.activeTextColor,
+        defaultHighlight: widget.controller.activeTextHighlight,
+      );
       ctrl.addListener(() {
         box.text = ctrl!.text;
         box.spans = ctrl.spans;
@@ -218,6 +236,7 @@ class _NoteCanvasState extends State<NoteCanvas>
   @override
   void dispose() {
     _animController.dispose();
+    _transformationController.removeListener(_onTransformationChanged);
     for (final ctrl in _textControllers.values) {
       ctrl.dispose();
     }
@@ -520,8 +539,8 @@ class _NoteCanvasState extends State<NoteCanvas>
           box.position.dx,
           pageOriginY + box.position.dy,
           box.width,
-          box.height ?? 44.0,
-        ).inflate(12.0);
+          box.height ?? 48.0,
+        ).inflate(28.0);
         if (boxRect.contains(scenePos)) {
           return true;
         }
@@ -544,10 +563,12 @@ class _NoteCanvasState extends State<NoteCanvas>
                 builder: (context, _) {
                   final isPanTool = widget.controller.activeTool == ToolType.pan;
 
-                  return Stack(
-                    children: [
-                      // Full-viewport gesture listener with matrix inversion (never clips or dead-zones)
-                      Listener(
+                  return MouseRegion(
+                    cursor: _currentCursor,
+                    child: Stack(
+                      children: [
+                        // Full-viewport gesture listener with matrix inversion (never clips or dead-zones)
+                        Listener(
                         behavior: HitTestBehavior.translucent,
                         onPointerSignal: (pointerSignal) {
                           if (pointerSignal is PointerScaleEvent) {
@@ -688,9 +709,9 @@ class _NoteCanvasState extends State<NoteCanvas>
                           (AppConstants.pageHeaderHeight +
                               activeIdx * AppConstants.pagePitch);
 
-                      // If touching inside a text box and not in text or lasso mode, ignore canvas pointer down
+                      // If touching inside an existing text box (and not lasso selecting),
+                      // let the text box widget's own gesture detectors handle drag, resize, and typing
                       if (!isInteractingWithSelection &&
-                          widget.controller.activeTool != ToolType.text &&
                           widget.controller.activeTool != ToolType.lasso &&
                           _isPointerOverAnyTextBox(scenePos)) {
                         return;
@@ -825,83 +846,80 @@ class _NoteCanvasState extends State<NoteCanvas>
                           );
                         }
                       },
-                      child: Center(
-                        child: MouseRegion(
-                          cursor: _currentCursor,
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              // Layer 1: Multi-page vertical sheets
-                              Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  for (int i = 0;
-                                      i < widget.controller.pages.length;
-                                      i++) ...[
-                                    _buildPageSheet(i),
-                                    const SizedBox(
-                                      height: AppConstants.pageGap,
-                                    ),
-                                  ],
-                                  _buildAddPageButton(),
-                                  const SizedBox(height: 48.0),
-                                ],
-                              ),
-
-                              // Layer 2: All text boxes across all pages
-                              for (int i = 0;
-                                  i < widget.controller.pages.length;
-                                  i++)
-                                for (final box in widget
-                                    .controller.pages[i].textBoxes)
-                                  TextBoxWidget(
-                                    key: ValueKey(box.id),
-                                    textBox: box,
-                                    controller: widget.controller,
-                                    isSelected: widget.controller
-                                            .activeTextBoxId ==
-                                        box.id,
-                                    richController:
-                                        _getOrCreateTextController(box),
-                                    boardPosition: Offset(
-                                      box.position.dx,
-                                      AppConstants.pageHeaderHeight +
-                                          i * AppConstants.pagePitch +
-                                          box.position.dy,
-                                    ),
+                      child: UnboundedHitTest(
+                        child: UnboundedHitTestStack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            // Layer 1: Multi-page vertical sheets
+                            Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                for (int i = 0;
+                                    i < widget.controller.pages.length;
+                                    i++) ...[
+                                  _buildPageSheet(i),
+                                  const SizedBox(
+                                    height: AppConstants.pageGap,
                                   ),
+                                ],
+                                _buildAddPageButton(),
+                                const SizedBox(height: 48.0),
+                              ],
+                            ),
 
-                              // Layer 3: Selection bounding box, handles, toolbar, and dragged strokes
-                              if (widget.controller.hasSelection &&
-                                  widget.controller.selectionBounds != null)
-                                _buildGlobalSelectionOverlay(),
-
-                              // Layer 4: Global Lasso in-progress freeform loop
-                              ValueListenableBuilder<List<Offset>>(
-                                valueListenable:
-                                    widget.controller.lassoPointsNotifier,
-                                builder: (context, lassoPoints, _) {
-                                  if (lassoPoints.isEmpty) {
-                                    return const SizedBox.shrink();
-                                  }
-                                  final activePageIdx =
-                                      widget.controller.activePageIndex;
-                                  final canvasOrigin = Offset(
-                                    0.0,
+                            // Layer 2: All text boxes across all pages
+                            for (int i = 0;
+                                i < widget.controller.pages.length;
+                                i++)
+                              for (final box in widget
+                                  .controller.pages[i].textBoxes)
+                                TextBoxWidget(
+                                  key: ValueKey(box.id),
+                                  textBox: box,
+                                  controller: widget.controller,
+                                  isSelected: widget.controller
+                                          .activeTextBoxId ==
+                                      box.id,
+                                  richController:
+                                      _getOrCreateTextController(box),
+                                  boardPosition: Offset(
+                                    box.position.dx,
                                     AppConstants.pageHeaderHeight +
-                                        activePageIdx *
-                                            AppConstants.pagePitch,
-                                  );
-                                  return Transform.translate(
-                                    offset: canvasOrigin,
-                                    child: CustomPaint(
-                                      painter: LassoPathPainter(lassoPoints),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ],
-                          ),
+                                        i * AppConstants.pagePitch +
+                                        box.position.dy,
+                                  ),
+                                ),
+
+                            // Layer 3: Selection bounding box, handles, toolbar, and dragged strokes
+                            if (widget.controller.hasSelection &&
+                                widget.controller.selectionBounds != null)
+                              _buildGlobalSelectionOverlay(),
+
+                            // Layer 4: Global Lasso in-progress freeform loop
+                            ValueListenableBuilder<List<Offset>>(
+                              valueListenable:
+                                  widget.controller.lassoPointsNotifier,
+                              builder: (context, lassoPoints, _) {
+                                if (lassoPoints.isEmpty) {
+                                  return const SizedBox.shrink();
+                                }
+                                final activePageIdx =
+                                    widget.controller.activePageIndex;
+                                final canvasOrigin = Offset(
+                                  0.0,
+                                  AppConstants.pageHeaderHeight +
+                                      activePageIdx *
+                                          AppConstants.pagePitch,
+                                );
+                                return Transform.translate(
+                                  offset: canvasOrigin,
+                                  child: CustomPaint(
+                                    painter: LassoPathPainter(lassoPoints),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -933,7 +951,8 @@ class _NoteCanvasState extends State<NoteCanvas>
                     ),
                   ),
                 ],
-              );
+              ),
+            );
             },
           );
         },

@@ -159,39 +159,117 @@ class CanvasController extends ChangeNotifier {
   RichTextEditingController? get activeRichTextController =>
       _activeRichTextController;
 
+  double _canvasScale = 1.0;
+  double get canvasScale => _canvasScale;
+
+  void setCanvasScale(double scale) {
+    if ((_canvasScale - scale).abs() > 0.0001) {
+      _canvasScale = scale;
+    }
+  }
+
   void setActiveRichTextController(RichTextEditingController? ctrl) {
     if (_activeRichTextController == ctrl) return;
+    _activeRichTextController?.removeListener(_onRichTextControllerChanged);
     _activeRichTextController = ctrl;
+    _activeRichTextController?.addListener(_onRichTextControllerChanged);
     notifyListeners();
   }
 
+  void _onRichTextControllerChanged() {
+    notifyListeners();
+  }
+
+  HeadingLevel _activeTextHeading = HeadingLevel.none;
+  bool _activeTextBold = false;
+  bool _activeTextItalic = false;
+  bool _activeTextUnderline = false;
+  bool _activeTextStrikethrough = false;
+  Color? _activeTextColor;
+  Color? _activeTextHighlight;
+
+  HeadingLevel get activeTextHeading =>
+      _activeRichTextController?.currentHeading ?? _activeTextHeading;
+  bool get activeTextBold =>
+      _activeRichTextController?.isSelectionBold ?? _activeTextBold;
+  bool get activeTextItalic =>
+      _activeRichTextController?.isSelectionItalic ?? _activeTextItalic;
+  bool get activeTextUnderline =>
+      _activeRichTextController?.isSelectionUnderline ?? _activeTextUnderline;
+  bool get activeTextStrikethrough =>
+      _activeRichTextController?.isSelectionStrikethrough ?? _activeTextStrikethrough;
+  Color? get activeTextColor =>
+      _activeRichTextController?.currentTextColor ?? _activeTextColor;
+  Color? get activeTextHighlight =>
+      _activeRichTextController?.currentHighlightColor ?? _activeTextHighlight;
+
   void toggleBold() {
-    _activeRichTextController?.toggleBold();
+    if (_activeRichTextController != null) {
+      _activeRichTextController!.toggleBold();
+      _activeTextBold = _activeRichTextController!.isSelectionBold;
+    } else {
+      _activeTextBold = !_activeTextBold;
+    }
     notifyListeners();
   }
 
   void toggleItalic() {
-    _activeRichTextController?.toggleItalic();
+    if (_activeRichTextController != null) {
+      _activeRichTextController!.toggleItalic();
+      _activeTextItalic = _activeRichTextController!.isSelectionItalic;
+    } else {
+      _activeTextItalic = !_activeTextItalic;
+    }
     notifyListeners();
   }
 
   void toggleUnderline() {
-    _activeRichTextController?.toggleUnderline();
+    if (_activeRichTextController != null) {
+      _activeRichTextController!.toggleUnderline();
+      _activeTextUnderline = _activeRichTextController!.isSelectionUnderline;
+    } else {
+      _activeTextUnderline = !_activeTextUnderline;
+    }
     notifyListeners();
   }
 
   void toggleStrikethrough() {
-    _activeRichTextController?.toggleStrikethrough();
+    if (_activeRichTextController != null) {
+      _activeRichTextController!.toggleStrikethrough();
+      _activeTextStrikethrough = _activeRichTextController!.isSelectionStrikethrough;
+    } else {
+      _activeTextStrikethrough = !_activeTextStrikethrough;
+    }
     notifyListeners();
   }
 
   void setHeading(HeadingLevel heading) {
-    _activeRichTextController?.setHeading(heading);
+    if (_activeRichTextController != null) {
+      _activeRichTextController!.setHeading(heading);
+      _activeTextHeading = _activeRichTextController!.currentHeading;
+    } else {
+      _activeTextHeading = heading;
+    }
+    notifyListeners();
+  }
+
+  void setTextColor(Color color) {
+    if (_activeRichTextController != null) {
+      _activeRichTextController!.setTextColor(color);
+      _activeTextColor = _activeRichTextController!.currentTextColor;
+    } else {
+      _activeTextColor = color;
+    }
     notifyListeners();
   }
 
   void setTextHighlight(Color? color) {
-    _activeRichTextController?.setTextHighlight(color);
+    if (_activeRichTextController != null) {
+      _activeRichTextController!.setTextHighlight(color);
+      _activeTextHighlight = _activeRichTextController!.currentHighlightColor;
+    } else {
+      _activeTextHighlight = color;
+    }
     notifyListeners();
   }
 
@@ -256,6 +334,9 @@ class CanvasController extends ChangeNotifier {
     if (_activeTextBoxId == id) return;
     _cleanUpEmptyTextBoxes(exceptId: id);
     _activeTextBoxId = id;
+    if (id == null) {
+      setActiveRichTextController(null);
+    }
     notifyListeners();
   }
 
@@ -611,7 +692,7 @@ class CanvasController extends ChangeNotifier {
     // Unfocus active text box if clicking outside with a different tool
     if (_activeTextBoxId != null && _activeTool != ToolType.text) {
       final box = activeTextBox;
-      if (box == null || !box.bounds.inflate(16.0).contains(localPosition)) {
+      if (box == null || !box.bounds.inflate(28.0).contains(localPosition)) {
         unfocusActiveTextBox();
       }
     }
@@ -621,7 +702,7 @@ class CanvasController extends ChangeNotifier {
       _drawingPointerId = pointer;
       NoteTextBox? hit;
       for (final box in _textBoxes.reversed) {
-        if (box.bounds.inflate(12.0).contains(localPosition)) {
+        if (box.bounds.inflate(28.0).contains(localPosition)) {
           hit = box;
           break;
         }
@@ -1356,6 +1437,7 @@ class CanvasController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _activeRichTextController?.removeListener(_onRichTextControllerChanged);
     currentStrokeNotifier.dispose();
     eraserPointerNotifier.dispose();
     lassoPointsNotifier.dispose();

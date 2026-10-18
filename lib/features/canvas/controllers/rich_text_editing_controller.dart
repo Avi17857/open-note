@@ -8,26 +8,40 @@ import 'package:open_note/features/canvas/models/rich_text_span.dart';
 /// - Elementary boundary slicing algorithm producing disjoint styled [TextSpan]s.
 /// - Automatic span adjustment on typing, pasting, and backspacing.
 /// - Rich formatting toggles: Bold, Italic, Underline, Strikethrough, Headings, and Colors.
-/// - Active typing style persistence for collapsed cursor typing.
+/// - Active typing style persistence for collapsed cursor typing without modifying existing unhighlighted text.
 class RichTextEditingController extends TextEditingController {
   List<RichTextSpan> _spans = [];
   String _previousText = '';
 
-  // Active styling for the next inserted characters when cursor is collapsed
-  bool? _pendingBold;
-  bool? _pendingItalic;
-  bool? _pendingUnderline;
-  bool? _pendingStrikethrough;
-  Color? _pendingColor;
-  Color? _pendingHighlightColor;
-  HeadingLevel? _pendingHeading;
+  // Active styling for newly typed characters when cursor is collapsed
+  HeadingLevel _typingHeading = HeadingLevel.none;
+  bool _typingBold = false;
+  bool _typingItalic = false;
+  bool _typingUnderline = false;
+  bool _typingStrikethrough = false;
+  Color? _typingColor;
+  Color? _typingHighlightColor;
 
   RichTextEditingController({
     super.text,
     List<RichTextSpan>? spans,
+    HeadingLevel defaultHeading = HeadingLevel.none,
+    bool defaultBold = false,
+    bool defaultItalic = false,
+    bool defaultUnderline = false,
+    bool defaultStrikethrough = false,
+    Color? defaultColor,
+    Color? defaultHighlight,
   }) {
     _spans = spans != null ? List.from(spans) : [];
     _previousText = text;
+    _typingHeading = defaultHeading;
+    _typingBold = defaultBold;
+    _typingItalic = defaultItalic;
+    _typingUnderline = defaultUnderline;
+    _typingStrikethrough = defaultStrikethrough;
+    _typingColor = defaultColor;
+    _typingHighlightColor = defaultHighlight;
   }
 
   List<RichTextSpan> get spans => List.unmodifiable(_spans);
@@ -37,26 +51,62 @@ class RichTextEditingController extends TextEditingController {
     notifyListeners();
   }
 
+  TextSelection _lastSelection = const TextSelection.collapsed(offset: -1);
+
   @override
   set value(TextEditingValue newValue) {
+    final oldSelection = selection;
+    final newSelection = newValue.selection;
+    if (newSelection.isValid && newSelection.baseOffset >= 0) {
+      _lastSelection = newSelection;
+    }
     final oldText = _previousText;
     final newText = newValue.text;
 
     if (oldText != newText) {
-      _adjustSpansOnTextChange(oldText, newText, selection);
+      _adjustSpansOnTextChange(oldText, newText);
       _previousText = newText;
+    } else if (newSelection != oldSelection) {
+      _updateTypingStyleFromCursor(newSelection);
     }
 
     super.value = newValue;
   }
 
-  /// Automatically shifts and resizes span intervals when text is inserted or deleted.
-  void _adjustSpansOnTextChange(
-    String oldText,
-    String newText,
-    TextSelection oldSelection,
-  ) {
-    if (_spans.isEmpty && _hasNoPendingStyles) return;
+  void _updateTypingStyleFromCursor(TextSelection sel) {
+    if (!sel.isCollapsed || text.isEmpty) return;
+    final cursor = sel.baseOffset.clamp(0, text.length);
+    final targetIndex = cursor > 0 ? cursor - 1 : 0;
+    RichTextSpan? hitSpan;
+    for (final s in _spans) {
+      if (s.contains(targetIndex)) {
+        hitSpan = s;
+        break;
+      }
+    }
+    if (hitSpan != null) {
+      _typingHeading = hitSpan.heading;
+      _typingBold = hitSpan.bold;
+      _typingItalic = hitSpan.italic;
+      _typingUnderline = hitSpan.underline;
+      _typingStrikethrough = hitSpan.strikethrough;
+      _typingColor = hitSpan.color;
+      _typingHighlightColor = hitSpan.highlightColor;
+    } else {
+      _typingHeading = HeadingLevel.none;
+      _typingBold = false;
+      _typingItalic = false;
+      _typingUnderline = false;
+      _typingStrikethrough = false;
+      _typingColor = null;
+      _typingHighlightColor = null;
+    }
+    notifyListeners();
+  }
+
+  /// Automatically shifts, resizes, and assigns styles when text is inserted or deleted.
+  void _adjustSpansOnTextChange(String oldText, String newText) {
+    if (_spans.isEmpty && !_typingHasAttributes) return;
 
     final oldLen = oldText.length;
     final newLen = newText.length;
@@ -92,15 +142,14 @@ class RichTextEditingController extends TextEditingController {
       // 1. Text deletion handling
       if (deletedCount > 0) {
         if (start >= deletedEnd) {
-          // Span is completely after deleted range -> shift backward
           start -= deletedCount;
           end -= deletedCount;
         } else if (end <= deletedStart) {
-          // Span is completely before deleted range -> unchanged
+          // Unchanged
         } else {
-          // Span overlaps deleted range -> contract it
           if (start > deletedStart) start = deletedStart;
-          final overlap = min<int>(span.end, deletedEnd) - max<int>(span.start, deletedStart);
+          final overlap =
+              min<int>(span.end, deletedEnd) - max<int>(span.start, deletedStart);
           end -= overlap;
         }
       }
@@ -109,16 +158,26 @@ class RichTextEditingController extends TextEditingController {
       if (insertedCount > 0) {
         final insertPos = deletedStart;
         if (start > insertPos) {
-          // Span starts after insertion point -> shift forward
+          // Span is after insertion point -> shift forward
           start += insertedCount;
           end += insertedCount;
-        } else if (start <= insertPos && end >= insertPos) {
-          // Span encloses insertion point -> expand span
-          end += insertedCount;
+        } else if (start <= insertPos && end > insertPos) {
+          // Insertion point is inside span
+          if (start < insertPos || _typingMatchesSpan(span)) {
+            end += insertedCount;
+          } else {
+            // At start boundary and typing differs -> shift forward
+            start += insertedCount;
+            end += insertedCount;
+          }
+        } else if (end == insertPos) {
+          // Insertion point is right at the end of the span
+          if (_typingMatchesSpan(span)) {
+            end += insertedCount;
+          }
         }
       }
 
-      // Clamp to valid text range and only keep non-empty spans
       start = start.clamp(0, newLen);
       end = end.clamp(0, newLen);
       if (start < end) {
@@ -126,44 +185,83 @@ class RichTextEditingController extends TextEditingController {
       }
     }
 
-    // If text was inserted and pending styles were queued, create a new span for inserted range
-    if (insertedCount > 0 && !_hasNoPendingStyles) {
+    // 3. If text was inserted and active typing style has attributes, create or expand span
+    if (insertedCount > 0 && _typingHasAttributes) {
       final insertStart = deletedStart;
       final insertEnd = deletedStart + insertedCount;
-      updatedSpans.add(RichTextSpan(
-        start: insertStart,
-        end: insertEnd,
-        bold: _pendingBold ?? false,
-        italic: _pendingItalic ?? false,
-        underline: _pendingUnderline ?? false,
-        strikethrough: _pendingStrikethrough ?? false,
-        color: _pendingColor,
-        highlightColor: _pendingHighlightColor,
-        heading: _pendingHeading ?? HeadingLevel.none,
-      ));
-      _clearPendingStyles();
+      final alreadyCovered = updatedSpans.any(
+        (s) =>
+            s.start <= insertStart &&
+            s.end >= insertEnd &&
+            _typingMatchesSpan(s),
+      );
+
+      if (!alreadyCovered) {
+        updatedSpans.add(RichTextSpan(
+          start: insertStart,
+          end: insertEnd,
+          bold: _typingBold,
+          italic: _typingItalic,
+          underline: _typingUnderline,
+          strikethrough: _typingStrikethrough,
+          color: _typingColor,
+          highlightColor: _typingHighlightColor,
+          heading: _typingHeading,
+        ));
+      }
     }
 
-    _spans = updatedSpans;
+    _spans = _mergeAdjacentSpans(updatedSpans);
   }
 
-  bool get _hasNoPendingStyles =>
-      _pendingBold == null &&
-      _pendingItalic == null &&
-      _pendingUnderline == null &&
-      _pendingStrikethrough == null &&
-      _pendingColor == null &&
-      _pendingHighlightColor == null &&
-      _pendingHeading == null;
+  bool _typingMatchesSpan(RichTextSpan span) {
+    return span.heading == _typingHeading &&
+        span.bold == _typingBold &&
+        span.italic == _typingItalic &&
+        span.underline == _typingUnderline &&
+        span.strikethrough == _typingStrikethrough &&
+        span.color == _typingColor &&
+        span.highlightColor == _typingHighlightColor;
+  }
 
-  void _clearPendingStyles() {
-    _pendingBold = null;
-    _pendingItalic = null;
-    _pendingUnderline = null;
-    _pendingStrikethrough = null;
-    _pendingColor = null;
-    _pendingHighlightColor = null;
-    _pendingHeading = null;
+  bool get _typingHasAttributes =>
+      _typingHeading != HeadingLevel.none ||
+      _typingBold ||
+      _typingItalic ||
+      _typingUnderline ||
+      _typingStrikethrough ||
+      _typingColor != null ||
+      _typingHighlightColor != null;
+
+  List<RichTextSpan> _mergeAdjacentSpans(List<RichTextSpan> input) {
+    if (input.length <= 1) return input;
+    final sorted = List<RichTextSpan>.from(input)
+      ..sort((a, b) => a.start.compareTo(b.start));
+
+    final List<RichTextSpan> merged = [];
+    for (final span in sorted) {
+      if (merged.isEmpty) {
+        merged.add(span);
+        continue;
+      }
+      final last = merged.last;
+      if (last.end == span.start && _spansMatch(last, span)) {
+        merged[merged.length - 1] = last.copyWith(end: span.end);
+      } else {
+        merged.add(span);
+      }
+    }
+    return merged;
+  }
+
+  bool _spansMatch(RichTextSpan a, RichTextSpan b) {
+    return a.heading == b.heading &&
+        a.bold == b.bold &&
+        a.italic == b.italic &&
+        a.underline == b.underline &&
+        a.strikethrough == b.strikethrough &&
+        a.color == b.color &&
+        a.highlightColor == b.highlightColor;
   }
 
   // ===========================================================================
@@ -202,7 +300,6 @@ class RichTextEditingController extends TextEditingController {
 
       final segText = text.substring(segStart, segEnd);
 
-      // Find all spans covering this slice
       bool isBold = false;
       bool isItalic = false;
       bool isUnderline = false;
@@ -251,26 +348,62 @@ class RichTextEditingController extends TextEditingController {
   // Rich Text Formatting Action API
   // ===========================================================================
 
-  bool get isSelectionBold => _checkSelectionAttribute((s) => s.bold);
-  bool get isSelectionItalic => _checkSelectionAttribute((s) => s.italic);
-  bool get isSelectionUnderline => _checkSelectionAttribute((s) => s.underline);
+  /// Returns the active selection or the last remembered non-collapsed selection.
+  TextSelection get effectiveSelection {
+    if (selection.isValid && selection.baseOffset >= 0) {
+      return selection;
+    }
+    if (_lastSelection.isValid && _lastSelection.baseOffset >= 0) {
+      return _lastSelection;
+    }
+    return selection;
+  }
+
+  bool get isSelectionBold =>
+      effectiveSelection.isCollapsed
+          ? _typingBold
+          : _checkSelectionAttribute((s) => s.bold);
+
+  bool get isSelectionItalic =>
+      effectiveSelection.isCollapsed
+          ? _typingItalic
+          : _checkSelectionAttribute((s) => s.italic);
+
+  bool get isSelectionUnderline =>
+      effectiveSelection.isCollapsed
+          ? _typingUnderline
+          : _checkSelectionAttribute((s) => s.underline);
+
   bool get isSelectionStrikethrough =>
-      _checkSelectionAttribute((s) => s.strikethrough);
+      effectiveSelection.isCollapsed
+          ? _typingStrikethrough
+          : _checkSelectionAttribute((s) => s.strikethrough);
+
+  Color? get currentTextColor {
+    final sel = effectiveSelection;
+    if (sel.isCollapsed) return _typingColor;
+    for (final s in _spans) {
+      if (s.overlaps(sel.start, sel.end) && s.color != null) return s.color;
+    }
+    return null;
+  }
+
+  Color? get currentHighlightColor {
+    final sel = effectiveSelection;
+    if (sel.isCollapsed) return _typingHighlightColor;
+    for (final s in _spans) {
+      if (s.overlaps(sel.start, sel.end) && s.highlightColor != null) {
+        return s.highlightColor;
+      }
+    }
+    return null;
+  }
 
   HeadingLevel get currentHeading {
-    if (selection.isCollapsed) {
-      // Find heading at cursor
-      final cursor = selection.baseOffset;
-      for (final s in _spans) {
-        if (s.contains(cursor) && s.heading != HeadingLevel.none) {
-          return s.heading;
-        }
-      }
-      return HeadingLevel.none;
-    }
+    final sel = effectiveSelection;
+    if (sel.isCollapsed) return _typingHeading;
     for (final s in _spans) {
-      if (s.overlaps(selection.start, selection.end) &&
-          s.heading != HeadingLevel.none) {
+      if (s.overlaps(sel.start, sel.end) && s.heading != HeadingLevel.none) {
         return s.heading;
       }
     }
@@ -278,29 +411,26 @@ class RichTextEditingController extends TextEditingController {
   }
 
   bool _checkSelectionAttribute(bool Function(RichTextSpan) check) {
-    if (selection.isCollapsed) {
-      final cursor = selection.baseOffset;
-      for (final s in _spans) {
-        if (s.contains(cursor) && check(s)) return true;
-      }
-      return false;
-    }
+    final sel = effectiveSelection;
+    if (sel.isCollapsed) return false;
     final relevant = _spans.where(
-      (s) => s.overlaps(selection.start, selection.end),
+      (s) => s.overlaps(sel.start, sel.end),
     );
     return relevant.isNotEmpty && relevant.every(check);
   }
 
   void toggleBold() {
-    if (selection.isCollapsed) {
-      _pendingBold = !(_pendingBold ?? isSelectionBold);
+    final sel = effectiveSelection;
+    if (sel.isCollapsed || sel.start >= sel.end) {
+      _typingBold = !_typingBold;
       notifyListeners();
       return;
     }
     final makeBold = !isSelectionBold;
+    _typingBold = makeBold;
     _applyAttribute(
-      selection.start,
-      selection.end,
+      sel.start,
+      sel.end,
       (s) => s.copyWith(bold: makeBold),
       addIfMissing: makeBold
           ? (start, end) => RichTextSpan(start: start, end: end, bold: true)
@@ -309,15 +439,17 @@ class RichTextEditingController extends TextEditingController {
   }
 
   void toggleItalic() {
-    if (selection.isCollapsed) {
-      _pendingItalic = !(_pendingItalic ?? isSelectionItalic);
+    final sel = effectiveSelection;
+    if (sel.isCollapsed || sel.start >= sel.end) {
+      _typingItalic = !_typingItalic;
       notifyListeners();
       return;
     }
     final makeItalic = !isSelectionItalic;
+    _typingItalic = makeItalic;
     _applyAttribute(
-      selection.start,
-      selection.end,
+      sel.start,
+      sel.end,
       (s) => s.copyWith(italic: makeItalic),
       addIfMissing: makeItalic
           ? (start, end) => RichTextSpan(start: start, end: end, italic: true)
@@ -326,15 +458,17 @@ class RichTextEditingController extends TextEditingController {
   }
 
   void toggleUnderline() {
-    if (selection.isCollapsed) {
-      _pendingUnderline = !(_pendingUnderline ?? isSelectionUnderline);
+    final sel = effectiveSelection;
+    if (sel.isCollapsed || sel.start >= sel.end) {
+      _typingUnderline = !_typingUnderline;
       notifyListeners();
       return;
     }
     final makeUnderline = !isSelectionUnderline;
+    _typingUnderline = makeUnderline;
     _applyAttribute(
-      selection.start,
-      selection.end,
+      sel.start,
+      sel.end,
       (s) => s.copyWith(underline: makeUnderline),
       addIfMissing: makeUnderline
           ? (start, end) =>
@@ -344,16 +478,17 @@ class RichTextEditingController extends TextEditingController {
   }
 
   void toggleStrikethrough() {
-    if (selection.isCollapsed) {
-      _pendingStrikethrough =
-          !(_pendingStrikethrough ?? isSelectionStrikethrough);
+    final sel = effectiveSelection;
+    if (sel.isCollapsed || sel.start >= sel.end) {
+      _typingStrikethrough = !_typingStrikethrough;
       notifyListeners();
       return;
     }
     final makeStrikethrough = !isSelectionStrikethrough;
+    _typingStrikethrough = makeStrikethrough;
     _applyAttribute(
-      selection.start,
-      selection.end,
+      sel.start,
+      sel.end,
       (s) => s.copyWith(strikethrough: makeStrikethrough),
       addIfMissing: makeStrikethrough
           ? (start, end) =>
@@ -363,23 +498,12 @@ class RichTextEditingController extends TextEditingController {
   }
 
   void setHeading(HeadingLevel level) {
-    if (selection.isCollapsed) {
-      // Apply heading to current paragraph/line
-      final cursor = selection.baseOffset.clamp(0, text.length);
-      final lineStart = text.lastIndexOf('\n', max(0, cursor - 1)) + 1;
-      final nextNewline = text.indexOf('\n', cursor);
-      final lineEnd = nextNewline == -1 ? text.length : nextNewline;
-
-      if (lineStart < lineEnd) {
-        _applyHeadingRange(lineStart, lineEnd, level);
-      } else {
-        _pendingHeading = level;
-      }
-      notifyListeners();
-      return;
+    final sel = effectiveSelection;
+    _typingHeading = level;
+    if (!sel.isCollapsed && sel.start < sel.end) {
+      _applyHeadingRange(sel.start, sel.end, level);
     }
-
-    _applyHeadingRange(selection.start, selection.end, level);
+    notifyListeners();
   }
 
   void _applyHeadingRange(int start, int end, HeadingLevel level) {
@@ -394,36 +518,37 @@ class RichTextEditingController extends TextEditingController {
   }
 
   void setTextColor(Color color) {
-    if (selection.isCollapsed) {
-      _pendingColor = color;
-      notifyListeners();
-      return;
+    final sel = effectiveSelection;
+    _typingColor = color;
+    if (!sel.isCollapsed && sel.start < sel.end) {
+      _applyAttribute(
+        sel.start,
+        sel.end,
+        (s) => s.copyWith(color: color),
+        addIfMissing: (s, e) => RichTextSpan(start: s, end: e, color: color),
+      );
     }
-    _applyAttribute(
-      selection.start,
-      selection.end,
-      (s) => s.copyWith(color: color),
-      addIfMissing: (s, e) => RichTextSpan(start: s, end: e, color: color),
-    );
+    notifyListeners();
   }
 
   void setTextHighlight(Color? color) {
-    if (selection.isCollapsed) {
-      _pendingHighlightColor = color;
-      notifyListeners();
-      return;
+    final sel = effectiveSelection;
+    _typingHighlightColor = color;
+    if (!sel.isCollapsed && sel.start < sel.end) {
+      _applyAttribute(
+        sel.start,
+        sel.end,
+        (s) => s.copyWith(highlightColor: color),
+        addIfMissing: color != null
+            ? (s, e) => RichTextSpan(start: s, end: e, highlightColor: color)
+            : null,
+      );
     }
-    _applyAttribute(
-      selection.start,
-      selection.end,
-      (s) => s.copyWith(highlightColor: color),
-      addIfMissing: color != null
-          ? (s, e) => RichTextSpan(start: s, end: e, highlightColor: color)
-          : null,
-    );
+    notifyListeners();
   }
 
-  /// Slices existing spans along [start, end] and modifies covered portions with [modifier].
+  /// Slices existing spans along [start, end] and modifies covered portions with [modifier],
+  /// while also inserting [addIfMissing] for any gaps in [start, end] not covered by existing spans.
   void _applyAttribute(
     int start,
     int end,
@@ -433,39 +558,51 @@ class RichTextEditingController extends TextEditingController {
     if (start >= end) return;
 
     final List<RichTextSpan> result = [];
-    bool coveredAny = false;
+    final List<RichTextSpan> overlapping = [];
 
     for (final s in _spans) {
       if (!s.overlaps(start, end)) {
         result.add(s);
-        continue;
+      } else {
+        overlapping.add(s);
       }
+    }
 
-      coveredAny = true;
-      // Pre-overlap portion
+    overlapping.sort((a, b) => a.start.compareTo(b.start));
+
+    int currentPos = start;
+
+    for (final s in overlapping) {
       if (s.start < start) {
         result.add(s.copyWith(end: start));
       }
 
-      // Overlapping portion (modified)
+      final gapStart = currentPos;
+      final gapEnd = max(start, s.start);
+      if (gapStart < gapEnd && addIfMissing != null) {
+        result.add(addIfMissing(gapStart, gapEnd));
+      }
+
       final overlapStart = max(s.start, start);
       final overlapEnd = min(s.end, end);
       if (overlapStart < overlapEnd) {
-        final modified = modifier(s.copyWith(start: overlapStart, end: overlapEnd));
+        final modified =
+            modifier(s.copyWith(start: overlapStart, end: overlapEnd));
         result.add(modified);
       }
 
-      // Post-overlap portion
       if (s.end > end) {
         result.add(s.copyWith(start: end));
       }
+
+      currentPos = max(currentPos, overlapEnd);
     }
 
-    if (!coveredAny && addIfMissing != null) {
-      result.add(addIfMissing(start, end));
+    if (currentPos < end && addIfMissing != null) {
+      result.add(addIfMissing(currentPos, end));
     }
 
-    _spans = result;
+    _spans = _mergeAdjacentSpans(result);
     notifyListeners();
   }
 }

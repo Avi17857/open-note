@@ -246,7 +246,7 @@ class DrawingToolbar extends StatelessWidget {
                     label: 'B',
                     tooltip: 'Bold',
                     isBold: true,
-                    isActive: controller.activeRichTextController?.isSelectionBold ?? false,
+                    isActive: controller.activeTextBold,
                     onTap: controller.toggleBold,
                   ),
                   const SizedBox(width: 4),
@@ -254,7 +254,7 @@ class DrawingToolbar extends StatelessWidget {
                     label: 'I',
                     tooltip: 'Italic',
                     isItalic: true,
-                    isActive: controller.activeRichTextController?.isSelectionItalic ?? false,
+                    isActive: controller.activeTextItalic,
                     onTap: controller.toggleItalic,
                   ),
                   const SizedBox(width: 4),
@@ -262,7 +262,7 @@ class DrawingToolbar extends StatelessWidget {
                     label: 'U',
                     tooltip: 'Underline',
                     isUnderline: true,
-                    isActive: controller.activeRichTextController?.isSelectionUnderline ?? false,
+                    isActive: controller.activeTextUnderline,
                     onTap: controller.toggleUnderline,
                   ),
                   const SizedBox(width: 4),
@@ -270,7 +270,7 @@ class DrawingToolbar extends StatelessWidget {
                     label: 'S',
                     tooltip: 'Strikethrough',
                     isStrikethrough: true,
-                    isActive: controller.activeRichTextController?.isSelectionStrikethrough ?? false,
+                    isActive: controller.activeTextStrikethrough,
                     onTap: controller.toggleStrikethrough,
                   ),
 
@@ -494,8 +494,7 @@ class DrawingToolbar extends StatelessWidget {
   }
 
   Widget _buildHeadingDropdown(BuildContext context) {
-    final currentHeading =
-        controller.activeRichTextController?.currentHeading ?? HeadingLevel.none;
+    final currentHeading = controller.activeTextHeading;
 
     return PopupMenuButton<HeadingLevel>(
       tooltip: 'Heading style',
@@ -615,7 +614,7 @@ class DrawingToolbar extends StatelessWidget {
 
     return PopupMenuButton<Color>(
       tooltip: 'Font Color',
-      onSelected: controller.setColor,
+      onSelected: controller.setTextColor,
       padding: EdgeInsets.zero,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
@@ -633,7 +632,7 @@ class DrawingToolbar extends StatelessWidget {
               width: 10,
               height: 10,
               decoration: BoxDecoration(
-                color: controller.activeColor,
+                color: controller.activeTextColor ?? Colors.black87,
                 shape: BoxShape.circle,
               ),
             ),
