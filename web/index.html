@@ -32,15 +32,24 @@
   <title>open_note</title>
   <link rel="manifest" href="manifest.json">
 </head>
+<body>
   <script src="flutter_bootstrap.js" async></script>
   <script>
     // Prevent browser default Ctrl + MouseWheel / Trackpad pinch zoom
-    // so Flutter's canvas handles zooming smoothly instead of scaling the browser tab.
-    window.addEventListener('wheel', function(e) {
+    // and Ctrl + +/- browser tab zoom, so Flutter handles canvas zoom internally.
+    function preventBrowserZoom(e) {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
       }
-    }, { passive: false });
+    }
+    window.addEventListener('wheel', preventBrowserZoom, { passive: false, capture: true });
+    document.addEventListener('wheel', preventBrowserZoom, { passive: false, capture: true });
+
+    window.addEventListener('keydown', function(e) {
+      if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '-' || e.key === '=' || e.key === '0')) {
+        e.preventDefault();
+      }
+    }, { capture: true });
   </script>
 </body>
 </html>

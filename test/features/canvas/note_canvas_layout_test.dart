@@ -187,4 +187,148 @@ void main() {
     final zoomedInScale = iv.transformationController!.value.getMaxScaleOnAxis();
     expect(zoomedInScale, greaterThan(initialScale));
   });
+
+  testWidgets('Top and horizontal boundaries clamp canvas scrolling', (tester) async {
+    tester.view.physicalSize = const Size(1000, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final controller = CanvasController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: NoteCanvas(controller: controller),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final iv = tester.widget<InteractiveViewer>(find.byType(InteractiveViewer));
+
+    // Try to scroll UP past the top of Page 1 (scrollDelta.dy = -1000)
+    await tester.sendEventToBinding(
+      const PointerScrollEvent(
+        position: Offset(500, 400),
+        scrollDelta: Offset(0, -1000),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Top boundary constraint: ty cannot exceed 40.0
+    expect(iv.transformationController!.value.storage[13], lessThanOrEqualTo(40.0));
+
+    // Try to scroll far left (scrollDelta.dx = -2000)
+    await tester.sendEventToBinding(
+      const PointerScrollEvent(
+        position: Offset(500, 400),
+        scrollDelta: Offset(-2000, 0),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Horizontal pasteboard margin constraint: tx cannot exceed centerX + 450
+    // At scale 1.0 on 1000px width: centerX = (1000 - 600)/2 = 200. Max tx = 650.
+    expect(iv.transformationController!.value.storage[12], lessThanOrEqualTo(650.0));
+  });
+
+  testWidgets('Live Zoom percentage displays, zooms out to 50% limit, and resets', (tester) async {
+    tester.view.physicalSize = const Size(1920, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final controller = CanvasController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: NoteCanvas(controller: controller),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Check initial zoom % is 100% and fit/reset view button is present
+    expect(find.text('100%'), findsOneWidget);
+    expect(find.byKey(const Key('reset_view_button')), findsOneWidget);
+
+    // Tap Zoom In (+)
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pumpAndSettle();
+
+    // Zoom % pill should now show 120%
+    expect(find.text('120%'), findsOneWidget);
+
+    // Tap the percentage button to reset zoom in-place
+    await tester.tap(find.byKey(const Key('zoom_percentage_button')));
+    await tester.pumpAndSettle();
+
+    // Zoom % pill should be back to 100%
+    expect(find.text('100%'), findsOneWidget);
+
+    // Tap Zoom Out (-) multiple times to verify zoom out works and limits at 50%
+    await tester.tap(find.byIcon(Icons.remove));
+    await tester.pumpAndSettle();
+    expect(find.text('83%'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.remove));
+    await tester.pumpAndSettle();
+    expect(find.text('69%'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.remove));
+    await tester.pumpAndSettle();
+    expect(find.text('58%'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.remove));
+    await tester.pumpAndSettle();
+    // Clamped strictly at 50% minimum zoom limit
+    expect(find.text('50%'), findsOneWidget);
+
+    // Tap Reset View button (fit screen)
+    await tester.tap(find.byKey(const Key('reset_view_button')));
+    await tester.pumpAndSettle();
+
+    // Reset view should return to 100%
+    expect(find.text('100%'), findsOneWidget);
+  });
+
+  testWidgets('Off-screen page indicator appears when page is out of view and jumps back when tapped', (tester) async {
+    tester.view.physicalSize = const Size(1000, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final controller = CanvasController();
+    controller.addPage(); // 2 pages total
+    controller.setActivePage(0); // Page 1 is active
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: NoteCanvas(controller: controller),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Active page is 0 (Page 1), initially on screen
+    expect(find.byKey(const Key('back_to_page_indicator')), findsNothing);
+
+    // Scroll down by 1000px so Page 1 is pushed above the viewport
+    await tester.sendEventToBinding(
+      const PointerScrollEvent(
+        position: Offset(500, 400),
+        scrollDelta: Offset(0, 1000),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Off-screen indicator should now appear showing Page 1
+    expect(find.byKey(const Key('back_to_page_indicator')), findsOneWidget);
+    expect(find.text('Page 1'), findsWidgets);
+
+    // Tap the indicator to jump back to Page 1
+    await tester.tap(find.byKey(const Key('back_to_page_indicator')));
+    await tester.pumpAndSettle();
+
+    // Page 1 is back in view, indicator should disappear
+    expect(find.byKey(const Key('back_to_page_indicator')), findsNothing);
+  });
 }
+

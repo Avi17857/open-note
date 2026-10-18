@@ -64,6 +64,11 @@ OpenNote bridges the gap between the fluid inking experience of **Samsung Notes*
 - [ ] **Canvas Modes:**
   - Standard Paged Mode (fixed A4/Letter dimensions with vertical page-scrolling).
   - Infinite Canvas Mode (panning and two-finger pinch-to-zoom).
+- [x] **Canvas Navigation & Orientation:**
+  - OneNote-style top boundary anchor ($y \le 40\text{px}$) preventing endless scrolling into void space above Page 1.
+  - Horizontal pasteboard buffer ($450\text{px}$) keeping notes anchored without wandering off-screen.
+  - Dynamic "Back to Page" floating indicator pill when active page scrolls out of the viewport with smooth animated glide.
+  - Live zoom % pill with one-tap reset to 100% and auto-centering.
 
 ---
 

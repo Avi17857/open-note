@@ -20,6 +20,14 @@ import 'package:open_note/features/canvas/presentation/widgets/selection_toolbar
 import 'package:open_note/features/canvas/presentation/widgets/text_box_widget.dart';
 import 'package:open_note/features/canvas/services/lasso_service.dart';
 
+enum OffScreenDirection {
+  above,
+  below,
+  left,
+  right,
+  none,
+}
+
 class NoteCanvas extends StatefulWidget {
   final CanvasController controller;
   final PageTemplate template;
@@ -34,19 +42,113 @@ class NoteCanvas extends StatefulWidget {
   State<NoteCanvas> createState() => _NoteCanvasState();
 }
 
-class _NoteCanvasState extends State<NoteCanvas> {
+class _NoteCanvasState extends State<NoteCanvas>
+    with SingleTickerProviderStateMixin {
   final TransformationController _transformationController =
       TransformationController();
   final Map<String, RichTextEditingController> _textControllers = {};
 
+  static double _getScale(Matrix4 matrix) {
+    final sx = matrix.storage[0];
+    final sy = matrix.storage[1];
+    return sqrt(sx * sx + sy * sy);
+  }
+
+  late final AnimationController _animController;
+  Animation<Matrix4>? _matrixAnimation;
+
   @override
   void initState() {
     super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 280),
+    );
+    _animController.addListener(() {
+      if (_matrixAnimation != null) {
+        _transformationController.value = _matrixAnimation!.value;
+      }
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _centerCanvasInViewport();
       }
     });
+  }
+
+  Matrix4 _clampTransformation(Matrix4 matrix, Size viewportSize) {
+    if (viewportSize.width <= 0 || viewportSize.height <= 0) return matrix;
+
+    final currentScale = _getScale(matrix);
+    final scale = currentScale.clamp(
+      AppConstants.minScale,
+      AppConstants.maxScale,
+    );
+    final tx = matrix.storage[12];
+    final ty = matrix.storage[13];
+
+    // Total content height in scene coordinates
+    final totalPagesHeight =
+        widget.controller.pages.length * AppConstants.pagePitch;
+    final totalContentHeight = totalPagesHeight + 120.0;
+
+    // Top & Bottom boundary clamping
+    // Top of Page 1 stops at top cushion (max 40px down from viewport top)
+    const maxTy = 40.0;
+    // Bottom cushion allows scrolling comfortably past the last page
+    final minTy = min(
+      maxTy,
+      viewportSize.height - (scale * (totalContentHeight + 350.0)),
+    );
+    final clampedTy = ty.clamp(minTy, maxTy).toDouble();
+
+    // Horizontal boundary clamping (centered page +/- 450px pasteboard margin)
+    final centerX =
+        (viewportSize.width - scale * AppConstants.defaultPageSize.width) / 2.0;
+    final maxHorizontalMargin = 450.0 * scale;
+    final minTx = centerX - maxHorizontalMargin;
+    final maxTx = centerX + maxHorizontalMargin;
+    final clampedTx = tx.clamp(min(minTx, maxTx), max(minTx, maxTx)).toDouble();
+
+    final result = matrix.clone();
+    if ((scale - currentScale).abs() > 0.0001) {
+      final factor = scale / currentScale;
+      result.storage[0] *= factor;
+      result.storage[5] *= factor;
+    }
+    result.storage[12] = clampedTx;
+    result.storage[13] = clampedTy;
+    return result;
+  }
+
+  void _setTransformation(Matrix4 matrix) {
+    if (_animController.isAnimating) {
+      _animController.stop();
+    }
+    final RenderBox? box = context.findRenderObject() as RenderBox?;
+    if (box != null && box.hasSize) {
+      _transformationController.value = _clampTransformation(matrix, box.size);
+    } else {
+      _transformationController.value = matrix;
+    }
+  }
+
+  void _animateToMatrix(Matrix4 targetMatrix) {
+    final RenderBox? box = context.findRenderObject() as RenderBox?;
+    final clampedTarget = box != null && box.hasSize
+        ? _clampTransformation(targetMatrix, box.size)
+        : targetMatrix;
+
+    _animController.stop();
+    _matrixAnimation = Matrix4Tween(
+      begin: _transformationController.value,
+      end: clampedTarget,
+    ).animate(CurvedAnimation(
+      parent: _animController,
+      curve: Curves.easeOutCubic,
+    ));
+    _animController.forward(from: 0.0);
   }
 
   void _centerCanvasInViewport() {
@@ -55,9 +157,30 @@ class _NoteCanvasState extends State<NoteCanvas> {
       final viewportWidth = box.size.width;
       final initialX =
           (viewportWidth - AppConstants.defaultPageSize.width) / 2.0;
-      _transformationController.value = Matrix4.identity()
+      final targetMatrix = Matrix4.identity()
         ..translate(max(0.0, initialX), 24.0);
+      _setTransformation(targetMatrix);
     }
+  }
+
+  void _scrollToPage(int pageIndex) {
+    final RenderBox? box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return;
+
+    final viewportWidth = box.size.width;
+    final currentScale = _getScale(_transformationController.value);
+
+    final targetX =
+        (viewportWidth - currentScale * AppConstants.defaultPageSize.width) /
+            2.0;
+    final pageSheetTop = pageIndex * AppConstants.pagePitch;
+    final targetY = 24.0 - (currentScale * pageSheetTop);
+
+    final targetMatrix = Matrix4.identity()
+      ..translate(targetX, targetY)
+      ..scale(currentScale, currentScale, 1.0);
+
+    _animateToMatrix(targetMatrix);
   }
 
   RichTextEditingController _getOrCreateTextController(NoteTextBox box) {
@@ -75,6 +198,7 @@ class _NoteCanvasState extends State<NoteCanvas> {
 
   @override
   void dispose() {
+    _animController.dispose();
     for (final ctrl in _textControllers.values) {
       ctrl.dispose();
     }
@@ -87,11 +211,11 @@ class _NoteCanvasState extends State<NoteCanvas> {
   }
 
   void _zoomOut() {
-    _applyZoom(0.8);
+    _applyZoom(1.0 / 1.2);
   }
 
   void _zoomAtPoint(Offset pos, double factor) {
-    final currentScale = _transformationController.value.getMaxScaleOnAxis();
+    final currentScale = _getScale(_transformationController.value);
     final targetScale = (currentScale * factor).clamp(
       AppConstants.minScale,
       AppConstants.maxScale,
@@ -108,7 +232,7 @@ class _NoteCanvasState extends State<NoteCanvas> {
         Matrix4.translationValues(pos.dx, pos.dy, 0.0);
 
     final transform = translationAfter * scaleMatrix * translationBefore;
-    _transformationController.value = transform * matrix;
+    _setTransformation(transform * matrix);
   }
 
   void _applyZoom(double factor) {
@@ -119,8 +243,229 @@ class _NoteCanvasState extends State<NoteCanvas> {
     _zoomAtPoint(center, factor);
   }
 
-  void _resetZoom() {
-    _centerCanvasInViewport();
+  /// Resets zoom to 100% in-place at the current viewport center without jumping pages.
+  void _resetZoomInPlace() {
+    final RenderBox? box = context.findRenderObject() as RenderBox?;
+    final center = box != null && box.hasSize
+        ? Offset(box.size.width / 2.0, box.size.height / 2.0)
+        : const Offset(400.0, 400.0);
+    final currentScale = _getScale(_transformationController.value);
+    if ((currentScale - 1.0).abs() < 0.001) return;
+    _zoomAtPoint(center, 1.0 / currentScale);
+  }
+
+  /// Resets zoom to 100% and re-centers the active page in view.
+  void _resetViewAndCenter() {
+    final RenderBox? box = context.findRenderObject() as RenderBox?;
+    if (box != null && box.hasSize) {
+      final viewportWidth = box.size.width;
+      final initialX =
+          (viewportWidth - AppConstants.defaultPageSize.width) / 2.0;
+      final activeIdx = widget.controller.activePageIndex;
+      final pageSheetTop = activeIdx * AppConstants.pagePitch;
+      final targetY = 24.0 - pageSheetTop;
+      final targetMatrix = Matrix4.identity()
+        ..translate(max(0.0, initialX), targetY);
+      _animateToMatrix(targetMatrix);
+    }
+  }
+
+  OffScreenDirection _detectOffScreenDirection(
+    Matrix4 matrix,
+    Size viewportSize,
+  ) {
+    if (viewportSize.width <= 0 || viewportSize.height <= 0) {
+      return OffScreenDirection.none;
+    }
+
+    final scale = _getScale(matrix);
+    final tx = matrix.storage[12];
+    final ty = matrix.storage[13];
+
+    final activeIdx = widget.controller.activePageIndex;
+    final pageSheetTop = activeIdx * AppConstants.pagePitch;
+    final pageSheetHeight =
+        AppConstants.pageHeaderHeight + AppConstants.defaultPageSize.height;
+
+    final vPageTop = ty + scale * pageSheetTop;
+    final vPageBottom = ty + scale * (pageSheetTop + pageSheetHeight);
+    final vPageLeft = tx;
+    final vPageRight = tx + scale * AppConstants.defaultPageSize.width;
+
+    // Active page is scrolled above viewport
+    if (vPageBottom < 40.0) {
+      return OffScreenDirection.above;
+    }
+    // Active page is scrolled below viewport
+    if (vPageTop > viewportSize.height - 40.0) {
+      return OffScreenDirection.below;
+    }
+    // Active page is scrolled off to the left
+    if (vPageRight < 40.0) {
+      return OffScreenDirection.left;
+    }
+    // Active page is scrolled off to the right
+    if (vPageLeft > viewportSize.width - 40.0) {
+      return OffScreenDirection.right;
+    }
+
+    return OffScreenDirection.none;
+  }
+
+  Widget _buildBackToPageIndicator(
+    OffScreenDirection direction,
+    int activePage,
+  ) {
+    if (direction == OffScreenDirection.none ||
+        widget.controller.isTransforming) {
+      return const SizedBox.shrink();
+    }
+
+    final (IconData icon, Alignment alignment, EdgeInsets padding) =
+        switch (direction) {
+      OffScreenDirection.above => (
+          Icons.arrow_upward_rounded,
+          Alignment.topCenter,
+          const EdgeInsets.only(top: 16.0),
+        ),
+      OffScreenDirection.below => (
+          Icons.arrow_downward_rounded,
+          Alignment.bottomCenter,
+          const EdgeInsets.only(bottom: 24.0),
+        ),
+      OffScreenDirection.left => (
+          Icons.arrow_back_rounded,
+          Alignment.centerLeft,
+          const EdgeInsets.only(left: 16.0),
+        ),
+      OffScreenDirection.right => (
+          Icons.arrow_forward_rounded,
+          Alignment.centerRight,
+          const EdgeInsets.only(right: 16.0),
+        ),
+      OffScreenDirection.none => (
+          Icons.circle,
+          Alignment.center,
+          EdgeInsets.zero,
+        ),
+    };
+
+    return Align(
+      alignment: alignment,
+      child: Padding(
+        padding: padding,
+        child: Material(
+          key: const Key('back_to_page_indicator'),
+          elevation: 4,
+          borderRadius: BorderRadius.circular(20),
+          color: Colors.white,
+          shadowColor: Colors.black26,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: () => _scrollToPage(activePage),
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14.0, vertical: 8.0),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: AppColors.primary.withValues(alpha: 0.35),
+                  width: 1.2,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 16, color: AppColors.primary),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Page ${activePage + 1}',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFloatingZoomControls(double scale) {
+    final percent = (scale * 100).round();
+    final canZoomOut = scale > AppConstants.minScale + 0.01;
+    final canZoomIn = scale < AppConstants.maxScale - 0.01;
+
+    return Positioned(
+      right: 16,
+      bottom: 16,
+      child: Material(
+        elevation: 3,
+        borderRadius: BorderRadius.circular(24),
+        color: Colors.white,
+        shadowColor: Colors.black26,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.grey.shade300, width: 0.8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.remove, size: 18),
+                tooltip: 'Zoom Out (Min 50%)',
+                onPressed: canZoomOut ? _zoomOut : null,
+              ),
+              Tooltip(
+                message: 'Reset Zoom (100%)',
+                child: InkWell(
+                  key: const Key('zoom_percentage_button'),
+                  onTap: _resetZoomInPlace,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6.0,
+                      vertical: 6.0,
+                    ),
+                    child: Text(
+                      '$percent%',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: canZoomOut && canZoomIn
+                            ? Colors.black87
+                            : Colors.black54,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.add, size: 18),
+                tooltip: 'Zoom In (Max 300%)',
+                onPressed: canZoomIn ? _zoomIn : null,
+              ),
+              Container(
+                width: 1,
+                height: 18,
+                color: Colors.grey.shade300,
+              ),
+              IconButton(
+                key: const Key('reset_view_button'),
+                icon: const Icon(Icons.fit_screen, size: 18),
+                tooltip: 'Fit / Reset View',
+                onPressed: _resetViewAndCenter,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   MouseCursor get _currentCursor {
@@ -162,44 +507,47 @@ class _NoteCanvasState extends State<NoteCanvas> {
       children: [
         DrawingToolbar(controller: widget.controller),
         Expanded(
-          child: ListenableBuilder(
-            listenable: widget.controller,
-            builder: (context, _) {
-              final isPanTool = widget.controller.activeTool == ToolType.pan;
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final viewportSize = constraints.biggest;
+              return ListenableBuilder(
+                listenable: widget.controller,
+                builder: (context, _) {
+                  final isPanTool = widget.controller.activeTool == ToolType.pan;
 
-              return Stack(
-                children: [
-                  // Full-viewport gesture listener with matrix inversion (never clips or dead-zones)
-                  Listener(
-                    behavior: HitTestBehavior.translucent,
-                    onPointerSignal: (pointerSignal) {
-                      if (pointerSignal is PointerScaleEvent) {
-                        // Web & Trackpad pinch-to-zoom / Ctrl+Wheel signal from browser
-                        _zoomAtPoint(pointerSignal.localPosition, pointerSignal.scale);
-                      } else if (pointerSignal is PointerScrollEvent) {
-                        final isCtrlPressed =
-                            HardwareKeyboard.instance.isControlPressed ||
-                                HardwareKeyboard.instance.isMetaPressed;
+                  return Stack(
+                    children: [
+                      // Full-viewport gesture listener with matrix inversion (never clips or dead-zones)
+                      Listener(
+                        behavior: HitTestBehavior.translucent,
+                        onPointerSignal: (pointerSignal) {
+                          if (pointerSignal is PointerScaleEvent) {
+                            // Web & Trackpad pinch-to-zoom / Ctrl+Wheel signal from browser
+                            _zoomAtPoint(pointerSignal.localPosition, pointerSignal.scale);
+                          } else if (pointerSignal is PointerScrollEvent) {
+                            final isCtrlPressed =
+                                HardwareKeyboard.instance.isControlPressed ||
+                                    HardwareKeyboard.instance.isMetaPressed;
 
-                        if (isCtrlPressed) {
-                          // Ctrl + Scrollwheel: Zoom in or out centered at cursor position
-                          final dy = pointerSignal.scrollDelta.dy;
-                          if (dy == 0.0) return;
+                            if (isCtrlPressed) {
+                              // Ctrl + Scrollwheel: Zoom in or out centered at cursor position
+                              final dy = pointerSignal.scrollDelta.dy;
+                              if (dy == 0.0) return;
 
-                          // Smooth exponential zoom factor (dy < 0 zooms in, dy > 0 zooms out)
-                          final zoomFactor = exp(-dy * 0.002);
-                          _zoomAtPoint(pointerSignal.localPosition, zoomFactor);
-                        } else {
-                          // Scrollwheel ONLY: Smoothly scroll / pan the canvas without zooming
-                          final matrix = _transformationController.value.clone();
-                          matrix.leftTranslate(
-                            -pointerSignal.scrollDelta.dx,
-                            -pointerSignal.scrollDelta.dy,
-                          );
-                          _transformationController.value = matrix;
-                        }
-                      }
-                    },
+                              // Smooth exponential zoom factor (dy < 0 zooms in, dy > 0 zooms out)
+                              final zoomFactor = exp(-dy * 0.002);
+                              _zoomAtPoint(pointerSignal.localPosition, zoomFactor);
+                            } else {
+                              // Scrollwheel ONLY: Smoothly scroll / pan the canvas without zooming
+                              final matrix = _transformationController.value.clone();
+                              matrix.leftTranslate(
+                                -pointerSignal.scrollDelta.dx,
+                                -pointerSignal.scrollDelta.dy,
+                              );
+                              _setTransformation(matrix);
+                            }
+                          }
+                        },
                     onPointerDown: (e) {
                       if (widget.controller.activeTool == ToolType.pan) return;
 
@@ -348,6 +696,16 @@ class _NoteCanvasState extends State<NoteCanvas> {
                       panEnabled: isPanTool,
                       scaleEnabled: false,
                       constrained: false,
+                      onInteractionEnd: (_) {
+                        final box = context.findRenderObject() as RenderBox?;
+                        if (box != null && box.hasSize) {
+                          _transformationController.value =
+                              _clampTransformation(
+                            _transformationController.value,
+                            box.size,
+                          );
+                        }
+                      },
                       child: Center(
                         child: MouseRegion(
                           cursor: _currentCursor,
@@ -430,43 +788,36 @@ class _NoteCanvasState extends State<NoteCanvas> {
                     ),
                   ),
 
-                  // Floating Zoom Controls (Bottom-Right)
-                  Positioned(
-                    right: 16,
-                    bottom: 16,
-                    child: Material(
-                      elevation: 3,
-                      borderRadius: BorderRadius.circular(24),
-                      color: Colors.white,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.remove, size: 18),
-                            tooltip: 'Zoom Out',
-                            onPressed: _zoomOut,
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.fit_screen, size: 18),
-                            tooltip: 'Fit / Reset',
-                            onPressed: _resetZoom,
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.add, size: 18),
-                            tooltip: 'Zoom In',
-                            onPressed: _zoomIn,
-                          ),
-                        ],
-                      ),
+                  // Floating Overlays: Off-screen active page indicator & live zoom controls
+                  Positioned.fill(
+                    child: ValueListenableBuilder<Matrix4>(
+                      valueListenable: _transformationController,
+                      builder: (context, matrix, _) {
+                        final direction =
+                            _detectOffScreenDirection(matrix, viewportSize);
+                        final scale = _getScale(matrix);
+
+                        return Stack(
+                          children: [
+                            _buildBackToPageIndicator(
+                              direction,
+                              widget.controller.activePageIndex,
+                            ),
+                            _buildFloatingZoomControls(scale),
+                          ],
+                        );
+                      },
                     ),
                   ),
                 ],
               );
             },
-          ),
-        ),
-      ],
-    );
+          );
+        },
+      ),
+    ),
+  ],
+);
   }
 
   Widget _buildAddPageButton() {
