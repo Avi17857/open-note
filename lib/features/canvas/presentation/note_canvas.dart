@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:open_note/core/constants/app_constants.dart';
 import 'package:open_note/core/theme/app_colors.dart';
 import 'package:open_note/features/canvas/controllers/canvas_controller.dart';
@@ -82,15 +83,40 @@ class _NoteCanvasState extends State<NoteCanvas> {
   }
 
   void _zoomIn() {
-    final matrix = _transformationController.value.clone();
-    matrix.scale(1.2, 1.2);
-    _transformationController.value = matrix;
+    _applyZoom(1.2);
   }
 
   void _zoomOut() {
+    _applyZoom(0.8);
+  }
+
+  void _zoomAtPoint(Offset pos, double factor) {
+    final currentScale = _transformationController.value.getMaxScaleOnAxis();
+    final targetScale = (currentScale * factor).clamp(
+      AppConstants.minScale,
+      AppConstants.maxScale,
+    );
+    if ((targetScale - currentScale).abs() < 0.0001) return;
+    final effectiveFactor = targetScale / currentScale;
+
     final matrix = _transformationController.value.clone();
-    matrix.scale(0.8, 0.8);
-    _transformationController.value = matrix;
+    final translationBefore =
+        Matrix4.translationValues(-pos.dx, -pos.dy, 0.0);
+    final scaleMatrix =
+        Matrix4.diagonal3Values(effectiveFactor, effectiveFactor, 1.0);
+    final translationAfter =
+        Matrix4.translationValues(pos.dx, pos.dy, 0.0);
+
+    final transform = translationAfter * scaleMatrix * translationBefore;
+    _transformationController.value = transform * matrix;
+  }
+
+  void _applyZoom(double factor) {
+    final RenderBox? box = context.findRenderObject() as RenderBox?;
+    final center = box != null && box.hasSize
+        ? Offset(box.size.width / 2.0, box.size.height / 2.0)
+        : const Offset(400.0, 400.0);
+    _zoomAtPoint(center, factor);
   }
 
   void _resetZoom() {
@@ -147,13 +173,31 @@ class _NoteCanvasState extends State<NoteCanvas> {
                   Listener(
                     behavior: HitTestBehavior.translucent,
                     onPointerSignal: (pointerSignal) {
-                      if (pointerSignal is PointerScrollEvent) {
-                        final matrix = _transformationController.value.clone();
-                        matrix.translate(
-                          -pointerSignal.scrollDelta.dx,
-                          -pointerSignal.scrollDelta.dy,
-                        );
-                        _transformationController.value = matrix;
+                      if (pointerSignal is PointerScaleEvent) {
+                        // Web & Trackpad pinch-to-zoom / Ctrl+Wheel signal from browser
+                        _zoomAtPoint(pointerSignal.localPosition, pointerSignal.scale);
+                      } else if (pointerSignal is PointerScrollEvent) {
+                        final isCtrlPressed =
+                            HardwareKeyboard.instance.isControlPressed ||
+                                HardwareKeyboard.instance.isMetaPressed;
+
+                        if (isCtrlPressed) {
+                          // Ctrl + Scrollwheel: Zoom in or out centered at cursor position
+                          final dy = pointerSignal.scrollDelta.dy;
+                          if (dy == 0.0) return;
+
+                          // Smooth exponential zoom factor (dy < 0 zooms in, dy > 0 zooms out)
+                          final zoomFactor = exp(-dy * 0.002);
+                          _zoomAtPoint(pointerSignal.localPosition, zoomFactor);
+                        } else {
+                          // Scrollwheel ONLY: Smoothly scroll / pan the canvas without zooming
+                          final matrix = _transformationController.value.clone();
+                          matrix.leftTranslate(
+                            -pointerSignal.scrollDelta.dx,
+                            -pointerSignal.scrollDelta.dy,
+                          );
+                          _transformationController.value = matrix;
+                        }
                       }
                     },
                     onPointerDown: (e) {
@@ -302,7 +346,7 @@ class _NoteCanvasState extends State<NoteCanvas> {
                       minScale: AppConstants.minScale,
                       maxScale: AppConstants.maxScale,
                       panEnabled: isPanTool,
-                      scaleEnabled: true,
+                      scaleEnabled: false,
                       constrained: false,
                       child: Center(
                         child: MouseRegion(

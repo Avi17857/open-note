@@ -1,4 +1,6 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:open_note/features/canvas/controllers/canvas_controller.dart';
 import 'package:open_note/features/canvas/models/tool_type.dart';
@@ -77,5 +79,112 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(controller.hasSelection, isTrue);
+  });
+
+  testWidgets('Mouse scroll without Ctrl only scrolls and does not zoom', (tester) async {
+    tester.view.physicalSize = const Size(1000, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final controller = CanvasController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: NoteCanvas(controller: controller),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final iv = tester.widget<InteractiveViewer>(find.byType(InteractiveViewer));
+    final initialMatrix = iv.transformationController!.value.clone();
+    final initialScale = initialMatrix.getMaxScaleOnAxis();
+
+    // Send mouse scroll event downwards (scrollDelta.dy = 100)
+    await tester.sendEventToBinding(
+      const PointerScrollEvent(
+        position: Offset(500, 400),
+        scrollDelta: Offset(0, 100),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final afterMatrix = iv.transformationController!.value.clone();
+    final afterScale = afterMatrix.getMaxScaleOnAxis();
+
+    // Scale must remain exactly the same (no zoom!)
+    expect(afterScale, equals(initialScale));
+    // Y translation must have scrolled by -100
+    expect(afterMatrix.storage[13], equals(initialMatrix.storage[13] - 100));
+  });
+
+  testWidgets('Mouse scroll with Ctrl zooms in and out', (tester) async {
+    tester.view.physicalSize = const Size(1000, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final controller = CanvasController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: NoteCanvas(controller: controller),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final iv = tester.widget<InteractiveViewer>(find.byType(InteractiveViewer));
+    final initialScale = iv.transformationController!.value.getMaxScaleOnAxis();
+
+    // Press Control key down
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+
+    // Scroll up with Ctrl (scrollDelta.dy = -100) -> Zoom In
+    await tester.sendEventToBinding(
+      const PointerScrollEvent(
+        position: Offset(500, 400),
+        scrollDelta: Offset(0, -100),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final zoomedInScale = iv.transformationController!.value.getMaxScaleOnAxis();
+    expect(zoomedInScale, greaterThan(initialScale));
+
+    // Release Control key
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+  });
+
+  testWidgets('PointerScaleEvent triggers zoom (web & trackpad pinch/ctrl+wheel signal)', (tester) async {
+    tester.view.physicalSize = const Size(1000, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final controller = CanvasController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: NoteCanvas(controller: controller),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final iv = tester.widget<InteractiveViewer>(find.byType(InteractiveViewer));
+    final initialScale = iv.transformationController!.value.getMaxScaleOnAxis();
+
+    // Send PointerScaleEvent with scale = 1.25 (zoom in)
+    await tester.sendEventToBinding(
+      const PointerScaleEvent(
+        position: Offset(500, 400),
+        scale: 1.25,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final zoomedInScale = iv.transformationController!.value.getMaxScaleOnAxis();
+    expect(zoomedInScale, greaterThan(initialScale));
   });
 }
