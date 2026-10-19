@@ -117,6 +117,12 @@ class _TextBoxWidgetState extends State<TextBoxWidget> {
       }
     });
 
+    final effectiveDirection = widget.textBox.textDirection ??
+        (NoteTextBox.isRtlText(widget.richController.text)
+            ? TextDirection.rtl
+            : TextDirection.ltr);
+    final isRtl = effectiveDirection == TextDirection.rtl;
+
     return Positioned(
       left: renderLeft,
       top: renderTop,
@@ -150,6 +156,8 @@ class _TextBoxWidgetState extends State<TextBoxWidget> {
                     canRequestFocus: isTextTool,
                     autofocus: isSelected,
                     maxLines: null,
+                    textDirection: effectiveDirection,
+                    textAlign: isRtl ? TextAlign.right : TextAlign.left,
                     keyboardType: TextInputType.multiline,
                     style: const TextStyle(
                       fontSize: 15.0,
@@ -183,7 +191,17 @@ class _TextBoxWidgetState extends State<TextBoxWidget> {
                 bottom: 0,
                 right: -12,
                 width: 24,
-                child: _buildResizeHandle(),
+                child: _buildResizeHandle(isLeft: false),
+              ),
+
+            // 4. Left-edge Resize Handle (Floats at left edge: -12, allows intuitive resizing for RTL/LTR)
+            if (isSelected)
+              Positioned(
+                top: 0,
+                bottom: 0,
+                left: -12,
+                width: 24,
+                child: _buildResizeHandle(isLeft: true),
               ),
           ],
         ),
@@ -250,10 +268,10 @@ class _TextBoxWidgetState extends State<TextBoxWidget> {
     );
   }
 
-  /// Right-edge full-height handle to widen or narrow the text container reliably
-  Widget _buildResizeHandle() {
+  /// Full-height handle to widen or narrow the text container reliably from left or right edge
+  Widget _buildResizeHandle({required bool isLeft}) {
     return MouseRegion(
-      key: const Key('text_box_resize_handle'),
+      key: Key(isLeft ? 'text_box_resize_handle_left' : 'text_box_resize_handle'),
       cursor: SystemMouseCursors.resizeLeftRight,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -262,16 +280,30 @@ class _TextBoxWidgetState extends State<TextBoxWidget> {
           setState(() => _isResizing = true);
           _resizeStartX = details.globalPosition.dx;
           _resizeInitialWidth = widget.textBox.width;
+          _dragInitialX = widget.textBox.position.dx;
         },
         onPanUpdate: (details) {
           if (!_isResizing || _resizeStartX == null) return;
           final scale = widget.controller.canvasScale;
           final deltaX = (details.globalPosition.dx - _resizeStartX!) / scale;
-          final newWidth = max(
-            NoteTextBox.minWidth,
-            _resizeInitialWidth! + deltaX,
-          );
-          widget.textBox.width = newWidth;
+          if (isLeft) {
+            final newWidth = max(
+              NoteTextBox.minWidth,
+              _resizeInitialWidth! - deltaX,
+            );
+            final actualDeltaX = _resizeInitialWidth! - newWidth;
+            widget.textBox.width = newWidth;
+            widget.textBox.position = Offset(
+              _dragInitialX! + actualDeltaX,
+              widget.textBox.position.dy,
+            );
+          } else {
+            final newWidth = max(
+              NoteTextBox.minWidth,
+              _resizeInitialWidth! + deltaX,
+            );
+            widget.textBox.width = newWidth;
+          }
           widget.controller.updateTextBox(widget.textBox);
         },
         onPanEnd: (_) {

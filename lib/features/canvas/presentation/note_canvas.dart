@@ -16,6 +16,7 @@ import 'package:open_note/features/canvas/presentation/painters/lasso_path_paint
 import 'package:open_note/features/canvas/presentation/painters/page_background_painter.dart';
 import 'package:open_note/features/canvas/presentation/painters/selection_painter.dart';
 import 'package:open_note/features/canvas/presentation/widgets/drawing_toolbar.dart';
+import 'package:open_note/features/canvas/presentation/widgets/note_image_widget.dart';
 import 'package:open_note/features/canvas/presentation/widgets/selection_toolbar.dart';
 import 'package:open_note/features/canvas/presentation/widgets/text_box_widget.dart';
 import 'package:open_note/features/canvas/presentation/widgets/unbounded_hit_test.dart';
@@ -550,23 +551,71 @@ class _NoteCanvasState extends State<NoteCanvas>
     return false;
   }
 
+  bool _isPointerOverAnyImage(Offset scenePos) {
+    final canInteract = widget.controller.activeTool == ToolType.text ||
+        widget.controller.activeTool == ToolType.lasso ||
+        widget.controller.selectedImageId != null;
+    if (!canInteract) return false;
+
+    for (int i = 0; i < widget.controller.pages.length; i++) {
+      final page = widget.controller.pages[i];
+      final pageOriginY =
+          AppConstants.pageHeaderHeight + i * AppConstants.pagePitch;
+      for (final img in page.images) {
+        final isSelected = widget.controller.selectedImageId == img.id;
+        final bottomExtra = isSelected ? 56.0 : 16.0;
+        final horizontalExtra = isSelected ? 60.0 : 16.0;
+        final imgRect = Rect.fromLTRB(
+          img.position.dx - horizontalExtra,
+          pageOriginY + img.position.dy - 16.0,
+          img.position.dx + img.width + horizontalExtra,
+          pageOriginY + img.position.dy + img.height + bottomExtra,
+        );
+        if (imgRect.contains(scenePos)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  Future<void> _handlePaste() async {
+    final hasPasted = await widget.controller.pasteImageFromClipboard();
+    if (hasPasted && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Image pasted onto canvas'),
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         DrawingToolbar(controller: widget.controller),
         Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final viewportSize = constraints.biggest;
-              return ListenableBuilder(
-                listenable: widget.controller,
-                builder: (context, _) {
-                  final isPanTool = widget.controller.activeTool == ToolType.pan;
+          child: CallbackShortcuts(
+            bindings: {
+              const SingleActivator(LogicalKeyboardKey.keyV, control: true): _handlePaste,
+              const SingleActivator(LogicalKeyboardKey.keyV, meta: true): _handlePaste,
+            },
+            child: Focus(
+              autofocus: true,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final viewportSize = constraints.biggest;
+                  return ListenableBuilder(
+                    listenable: widget.controller,
+                    builder: (context, _) {
+                      final isPanTool = widget.controller.activeTool == ToolType.pan;
 
-                  return MouseRegion(
-                    cursor: _currentCursor,
-                    child: Stack(
+                      return MouseRegion(
+                        cursor: _currentCursor,
+                        child: Stack(
                       children: [
                         // Full-viewport gesture listener with matrix inversion (never clips or dead-zones)
                         Listener(
@@ -714,10 +763,12 @@ class _NoteCanvasState extends State<NoteCanvas>
                           (AppConstants.pageHeaderHeight +
                               activeIdx * AppConstants.pagePitch);
 
-                      // If touching inside an existing text box in text mode,
-                      // let the text box widget's own gesture detectors handle drag, resize, and typing
+                      // If touching inside an existing text box or image,
+                      // let the widget's own gesture detectors handle drag, resize, and interaction
                       if (!isInteractingWithSelection &&
-                          _isPointerOverAnyTextBox(scenePos)) {
+                          (_isPointerOverAnyTextBox(scenePos) ||
+                              _isPointerOverAnyImage(scenePos))) {
+                        _primaryDrawingPointer = null;
                         return;
                       }
 
@@ -961,9 +1012,11 @@ class _NoteCanvasState extends State<NoteCanvas>
           );
         },
       ),
-    ),
-  ],
-);
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _buildAddPageButton() {
@@ -1084,82 +1137,103 @@ class _NoteCanvasState extends State<NoteCanvas>
               ),
             ],
           ),
-          child: Stack(
-            clipBehavior: Clip.none,
-            fit: StackFit.expand,
-            children: [
-              // 1. Page Background (plain, lined, or grid)
-              CustomPaint(
-                painter: PageBackgroundPainter(
-                  template: widget.template,
-                ),
-              ),
-
-              // 2. Completed Highlighters
-              RepaintBoundary(
-                child: CustomPaint(
-                  painter: CompletedStrokesPainter(
-                    renderedStrokes,
-                    layer: StrokeLayer.highlightersOnly,
+          child: UnboundedHitTest(
+            child: UnboundedHitTestStack(
+              clipBehavior: Clip.none,
+              fit: StackFit.expand,
+              children: [
+                // 1. Page Background (plain, lined, or grid)
+                IgnorePointer(
+                  child: CustomPaint(
+                    painter: PageBackgroundPainter(
+                      template: widget.template,
+                    ),
                   ),
                 ),
-              ),
 
-              // 3. Active Highlighter (on active page)
-              if (isActivePage)
-                ValueListenableBuilder<List<StrokePoint>>(
-                  valueListenable: widget.controller.currentStrokeNotifier,
-                  builder: (context, currentPoints, _) {
-                    if (widget.controller.activeTool !=
-                            ToolType.highlighter ||
-                        currentPoints.isEmpty) {
-                      return const SizedBox.shrink();
-                    }
-                    return RepaintBoundary(
-                      child: CustomPaint(
-                        painter: ActiveStrokePainter(
-                          points: currentPoints,
-                          color: widget.controller.activeColor,
-                          strokeWidth: widget.controller.strokeWidth,
-                          toolType: widget.controller.activeTool,
-                        ),
+                // 2. Images on this page (rendered beneath highlighters and pens for clean annotation)
+                for (final img in page.images)
+                  NoteImageWidget(
+                    key: ValueKey(img.id),
+                    image: img,
+                    controller: widget.controller,
+                    isSelected: widget.controller.selectedImageId == img.id,
+                    pageIndex: pageIndex,
+                  ),
+
+                // 3. Completed Highlighters
+                IgnorePointer(
+                  child: RepaintBoundary(
+                    child: CustomPaint(
+                      painter: CompletedStrokesPainter(
+                        renderedStrokes,
+                        layer: StrokeLayer.highlightersOnly,
                       ),
-                    );
-                  },
-                ),
-
-              // 4. Completed Pens & Fountain Pens
-              RepaintBoundary(
-                child: CustomPaint(
-                  painter: CompletedStrokesPainter(
-                    renderedStrokes,
-                    layer: StrokeLayer.pensOnly,
+                    ),
                   ),
                 ),
-              ),
 
-              // 5. Active Pen / Fountain Pen (on active page)
-              if (isActivePage)
-                ValueListenableBuilder<List<StrokePoint>>(
-                  valueListenable: widget.controller.currentStrokeNotifier,
-                  builder: (context, currentPoints, _) {
-                    if (widget.controller.activeTool ==
-                            ToolType.highlighter ||
-                        currentPoints.isEmpty) {
-                      return const SizedBox.shrink();
-                    }
-                    return RepaintBoundary(
-                      child: CustomPaint(
-                        painter: ActiveStrokePainter(
-                          points: currentPoints,
-                          color: widget.controller.activeColor,
-                          strokeWidth: widget.controller.strokeWidth,
-                          toolType: widget.controller.activeTool,
-                        ),
+                // 4. Active Highlighter (on active page)
+                if (isActivePage)
+                  IgnorePointer(
+                    child: ValueListenableBuilder<List<StrokePoint>>(
+                      valueListenable: widget.controller.currentStrokeNotifier,
+                      builder: (context, currentPoints, _) {
+                        if (widget.controller.activeTool !=
+                                ToolType.highlighter ||
+                            currentPoints.isEmpty) {
+                          return const SizedBox.shrink();
+                        }
+                        return RepaintBoundary(
+                          child: CustomPaint(
+                            painter: ActiveStrokePainter(
+                              points: currentPoints,
+                              color: widget.controller.activeColor,
+                              strokeWidth: widget.controller.strokeWidth,
+                              toolType: widget.controller.activeTool,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
+                // 5. Completed Pens & Fountain Pens
+                IgnorePointer(
+                  child: RepaintBoundary(
+                    child: CustomPaint(
+                      painter: CompletedStrokesPainter(
+                        renderedStrokes,
+                        layer: StrokeLayer.pensOnly,
                       ),
-                    );
-                  },
+                    ),
+                  ),
                 ),
+
+                // 6. Active Pen / Fountain Pen (on active page)
+                if (isActivePage)
+                  IgnorePointer(
+                    child: ValueListenableBuilder<List<StrokePoint>>(
+                      valueListenable: widget.controller.currentStrokeNotifier,
+                      builder: (context, currentPoints, _) {
+                        if (widget.controller.activeTool ==
+                                ToolType.highlighter ||
+                            currentPoints.isEmpty) {
+                          return const SizedBox.shrink();
+                        }
+                        return RepaintBoundary(
+                          child: CustomPaint(
+                            painter: ActiveStrokePainter(
+                              points: currentPoints,
+                              color: widget.controller.activeColor,
+                              strokeWidth: widget.controller.strokeWidth,
+                              toolType: widget.controller.activeTool,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
 
               // 6. Eraser Visual Cursor (on active page)
               if (isActivePage)
@@ -1180,7 +1254,8 @@ class _NoteCanvasState extends State<NoteCanvas>
                   },
                 ),
 
-            ],
+              ],
+            ),
           ),
         ),
       ],

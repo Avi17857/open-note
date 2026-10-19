@@ -274,6 +274,59 @@ class DrawingToolbar extends StatelessWidget {
                     onTap: controller.toggleStrikethrough,
                   ),
 
+                  // RTL / LTR Language Direction Toggle
+                  const SizedBox(width: 4),
+                  Tooltip(
+                    message: controller.isCurrentTextRtl
+                        ? 'Right-to-Left (RTL) active. Click to switch to LTR'
+                        : 'Left-to-Right (LTR) active. Click to switch to RTL (Arabic, Hebrew)',
+                    child: InkWell(
+                      key: const Key('toggle_rtl_button'),
+                      borderRadius: BorderRadius.circular(6),
+                      onTap: controller.toggleTextDirection,
+                      child: Container(
+                        height: 30,
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        decoration: BoxDecoration(
+                          color: controller.isCurrentTextRtl
+                              ? const Color(0xFF007AFF).withValues(alpha: 0.15)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: controller.isCurrentTextRtl
+                                ? const Color(0xFF007AFF)
+                                : Colors.grey.shade300,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              controller.isCurrentTextRtl
+                                  ? Icons.format_textdirection_r_to_l_rounded
+                                  : Icons.format_textdirection_l_to_r_rounded,
+                              size: 16,
+                              color: controller.isCurrentTextRtl
+                                  ? const Color(0xFF007AFF)
+                                  : Colors.black87,
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              controller.isCurrentTextRtl ? 'RTL' : 'LTR',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: controller.isCurrentTextRtl
+                                    ? const Color(0xFF007AFF)
+                                    : Colors.black87,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
                   const SizedBox(width: 8),
                   const VerticalDivider(width: 1, indent: 8, endIndent: 8),
                   const SizedBox(width: 8),
@@ -441,6 +494,13 @@ class DrawingToolbar extends StatelessWidget {
                   const VerticalDivider(width: 1, indent: 8, endIndent: 8),
                   const SizedBox(width: 12),
                 ],
+
+                // Insert / Paste Image
+                _buildImageMenuButton(context),
+
+                const SizedBox(width: 8),
+                const VerticalDivider(width: 1, indent: 8, endIndent: 8),
+                const SizedBox(width: 8),
 
                 // Undo / Redo
                 IconButton(
@@ -709,6 +769,78 @@ class DrawingToolbar extends StatelessWidget {
           ),
         );
       }).toList(),
+    );
+  }
+
+  Widget _buildImageMenuButton(BuildContext context) {
+    return PopupMenuButton<String>(
+      key: const Key('insert_image_button'),
+      tooltip: 'Insert or Paste Image',
+      offset: const Offset(0, 36),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Container(
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.add_photo_alternate_outlined, size: 16, color: Color(0xFF007AFF)),
+            const SizedBox(width: 4),
+            const Text(
+              'Image',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF007AFF),
+              ),
+            ),
+            const Icon(Icons.arrow_drop_down, size: 16, color: Colors.grey),
+          ],
+        ),
+      ),
+      onSelected: (choice) async {
+        if (choice == 'clipboard') {
+          final success = await controller.pasteImageFromClipboard();
+          if (!success && context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('No image found on clipboard to paste. Copy an image first!'),
+                duration: Duration(seconds: 2),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        } else if (choice == 'device') {
+          await controller.pickAndInsertImage();
+        }
+      },
+      itemBuilder: (context) => [
+        const PopupMenuItem(
+          value: 'clipboard',
+          child: Row(
+            children: [
+              Icon(Icons.content_paste_rounded, size: 18, color: Color(0xFF007AFF)),
+              SizedBox(width: 8),
+              Text('Paste from Clipboard (Ctrl+V)'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'device',
+          child: Row(
+            children: [
+              Icon(Icons.upload_file_rounded, size: 18, color: Colors.black87),
+              SizedBox(width: 8),
+              Text('Upload Image File...'),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

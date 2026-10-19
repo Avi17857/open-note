@@ -9,6 +9,7 @@ class NoteTextBox {
   double? height;
   String text;
   List<RichTextSpan> spans;
+  TextDirection? textDirection;
 
   NoteTextBox({
     required this.id,
@@ -17,10 +18,26 @@ class NoteTextBox {
     this.height,
     this.text = '',
     List<RichTextSpan>? spans,
+    this.textDirection,
   }) : spans = spans ?? [];
 
   /// Minimum width allowed when resizing
   static const double minWidth = 120.0;
+
+  /// Detects whether [text] contains Right-to-Left characters (Arabic, Hebrew, Persian, Urdu, etc.)
+  static bool isRtlText(String text) {
+    if (text.isEmpty) return false;
+    final rtlRegex = RegExp(
+      r'[\u0590-\u05FF\u0600-\u06FF\u0700-\u074F\u0750-\u077F\u0780-\u07BF\u08A0-\u08FF\uFB1D-\uFB4F\uFB50-\uFDFF\uFE70-\uFEFF]',
+    );
+    return rtlRegex.hasMatch(text);
+  }
+
+  /// The active text direction, falling back to script detection if unset.
+  TextDirection get effectiveTextDirection {
+    if (textDirection != null) return textDirection!;
+    return isRtlText(text) ? TextDirection.rtl : TextDirection.ltr;
+  }
 
   /// Approximate visual bounding box of the text container.
   Rect get bounds => Rect.fromLTWH(
@@ -37,6 +54,7 @@ class NoteTextBox {
     double? height,
     String? text,
     List<RichTextSpan>? spans,
+    TextDirection? textDirection,
   }) {
     return NoteTextBox(
       id: id ?? this.id,
@@ -47,6 +65,7 @@ class NoteTextBox {
       spans: spans != null
           ? List.from(spans)
           : this.spans.map((s) => s.copyWith()).toList(),
+      textDirection: textDirection ?? this.textDirection,
     );
   }
 
@@ -59,11 +78,13 @@ class NoteTextBox {
       if (height != null) 'height': height,
       'text': text,
       'spans': spans.map((s) => s.toJson()).toList(),
+      if (textDirection != null) 'textDirection': textDirection!.name,
     };
   }
 
   factory NoteTextBox.fromJson(Map<String, dynamic> json) {
     final rawSpans = (json['spans'] as List<dynamic>?) ?? [];
+    final dirStr = json['textDirection'] as String?;
     return NoteTextBox(
       id: json['id'] as String? ?? 'box_${DateTime.now().millisecondsSinceEpoch}',
       position: Offset(
@@ -76,6 +97,9 @@ class NoteTextBox {
       spans: rawSpans
           .map((s) => RichTextSpan.fromJson(s as Map<String, dynamic>))
           .toList(),
+      textDirection: dirStr == 'rtl'
+          ? TextDirection.rtl
+          : (dirStr == 'ltr' ? TextDirection.ltr : null),
     );
   }
 }

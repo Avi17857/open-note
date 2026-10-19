@@ -1,3 +1,4 @@
+import 'package:open_note/features/canvas/models/note_image.dart';
 import 'package:open_note/features/canvas/models/note_text_box.dart';
 import 'package:open_note/features/canvas/models/stroke.dart';
 
@@ -6,14 +7,17 @@ class NotePage {
   final int pageNumber;
   List<Stroke> strokes;
   List<NoteTextBox> textBoxes;
+  List<NoteImage> images;
 
   NotePage({
     required this.id,
     required this.pageNumber,
     List<Stroke>? strokes,
     List<NoteTextBox>? textBoxes,
+    List<NoteImage>? images,
   })  : strokes = strokes ?? [],
-        textBoxes = textBoxes ?? [];
+        textBoxes = textBoxes ?? [],
+        images = images ?? [];
 
   NotePage clone() {
     return NotePage(
@@ -21,6 +25,7 @@ class NotePage {
       pageNumber: pageNumber,
       strokes: List.from(strokes),
       textBoxes: textBoxes.map((b) => b.copyWith()).toList(),
+      images: images.map((img) => img.copyWith()).toList(),
     );
   }
 
@@ -29,12 +34,14 @@ class NotePage {
     int? pageNumber,
     List<Stroke>? strokes,
     List<NoteTextBox>? textBoxes,
+    List<NoteImage>? images,
   }) {
     return NotePage(
       id: id ?? this.id,
       pageNumber: pageNumber ?? this.pageNumber,
       strokes: strokes ?? List.from(this.strokes),
       textBoxes: textBoxes ?? this.textBoxes.map((b) => b.copyWith()).toList(),
+      images: images ?? this.images.map((img) => img.copyWith()).toList(),
     );
   }
 
@@ -44,12 +51,14 @@ class NotePage {
       'pageNumber': pageNumber,
       'strokes': strokes.map((s) => s.toJson()).toList(),
       'textBoxes': textBoxes.map((tb) => tb.toJson()).toList(),
+      'images': images.map((img) => img.toJson()).toList(),
     };
   }
 
   factory NotePage.fromJson(Map<String, dynamic> json) {
     final rawStrokes = (json['strokes'] as List<dynamic>?) ?? [];
     final rawTextBoxes = (json['textBoxes'] as List<dynamic>?) ?? [];
+    final rawImages = (json['images'] as List<dynamic>?) ?? [];
     return NotePage(
       id: json['id'] as String? ?? 'page_1',
       pageNumber: json['pageNumber'] as int? ?? 1,
@@ -58,6 +67,9 @@ class NotePage {
           .toList(),
       textBoxes: rawTextBoxes
           .map((tb) => NoteTextBox.fromJson(tb as Map<String, dynamic>))
+          .toList(),
+      images: rawImages
+          .map((img) => NoteImage.fromJson(img as Map<String, dynamic>))
           .toList(),
     );
   }

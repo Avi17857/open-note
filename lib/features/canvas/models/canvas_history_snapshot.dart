@@ -1,3 +1,4 @@
+import 'package:open_note/features/canvas/models/note_image.dart';
 import 'package:open_note/features/canvas/models/note_text_box.dart';
 import 'package:open_note/features/canvas/models/stroke.dart';
 import 'package:open_note/features/notebook/models/note_page.dart';
@@ -23,5 +24,11 @@ class CanvasHistorySnapshot {
   List<NoteTextBox> get textBoxes =>
       pages.isNotEmpty && activePageIndex < pages.length
           ? pages[activePageIndex].textBoxes
+          : const [];
+
+  /// Convenience getter for backward compatibility with single-page assertions
+  List<NoteImage> get images =>
+      pages.isNotEmpty && activePageIndex < pages.length
+          ? pages[activePageIndex].images
           : const [];
 }

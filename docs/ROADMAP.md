@@ -48,6 +48,15 @@ OpenNote bridges the gap between the fluid inking experience of **Samsung Notes*
   - Inline toggles: Bold, Italic, Underline, Strikethrough.
   - Heading selector: Body, H1, H2, H3.
   - Text color and background highlighter picker.
+- [x] **Right-to-Left (RTL) Language Support:**
+  - Automatic bidirectional script detection for Arabic, Hebrew, Persian, and Urdu.
+  - Native RTL text direction and right-alignment with dual left/right resize handles.
+  - One-tap LTR / RTL toggle button in the docked text formatting bar.
+- [x] **Images & Clipboard Integration:**
+  - Native clipboard image paste (`Ctrl+V` / `Cmd+V`) via `super_clipboard`.
+  - Image file upload picker (`file_picker`) from desktop/mobile.
+  - Interactive image manipulation: 4-corner aspect ratio resizing, canvas dragging, layer reordering (Bring to Front / Send to Back), and deletion.
+  - Dual-layer inking: pen, fountain pen, and highlighter strokes draw seamlessly *over* placed images for handwritten annotation.
 - [x] **Canvas Text Container:**
   - `T` (Text) tool on main toolbar: tap canvas to spawn a new text box.
   - Borderless editing with subtle drag-handles to move and resize anywhere on the page.

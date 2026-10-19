@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:typed_data';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
@@ -6,12 +7,14 @@ import 'package:open_note/core/constants/app_constants.dart';
 import 'package:open_note/core/theme/app_colors.dart';
 import 'package:open_note/features/canvas/controllers/rich_text_editing_controller.dart';
 import 'package:open_note/features/canvas/models/canvas_history_snapshot.dart';
+import 'package:open_note/features/canvas/models/note_image.dart';
 import 'package:open_note/features/canvas/models/note_text_box.dart';
 import 'package:open_note/features/canvas/models/rich_text_span.dart';
 import 'package:open_note/features/canvas/models/stroke.dart';
 import 'package:open_note/features/canvas/models/stroke_point.dart';
 import 'package:open_note/features/canvas/models/tool_type.dart';
 import 'package:open_note/features/canvas/presentation/widgets/selection_toolbar.dart';
+import 'package:open_note/features/canvas/services/clipboard_image_service.dart';
 import 'package:open_note/features/canvas/services/eraser_service.dart';
 import 'package:open_note/features/canvas/services/lasso_service.dart';
 import 'package:open_note/features/notebook/models/note_page.dart';
@@ -22,6 +25,7 @@ class CanvasController extends ChangeNotifier {
   ];
   int _activePageIndex = 0;
   String? _activeTextBoxId;
+  String? _selectedImageId;
   RichTextEditingController? _activeRichTextController;
 
   final List<CanvasHistorySnapshot> _undoStack = [];
@@ -155,6 +159,7 @@ class CanvasController extends ChangeNotifier {
         : [NotePage(id: 'page_1', pageNumber: 1)];
     _activePageIndex = 0;
     _activeTextBoxId = null;
+    _selectedImageId = null;
     _activeRichTextController = null;
     deselect();
     notifyListeners();
@@ -288,6 +293,32 @@ class CanvasController extends ChangeNotifier {
     setActiveRichTextController(null);
   }
 
+  bool get isCurrentTextRtl {
+    if (activeTextBox == null) return false;
+    if (activeTextBox!.textDirection != null) {
+      return activeTextBox!.textDirection == TextDirection.rtl;
+    }
+    final text = _activeRichTextController?.text ?? activeTextBox!.text;
+    return NoteTextBox.isRtlText(text);
+  }
+
+  void toggleTextDirection() {
+    final box = activeTextBox;
+    if (box == null) return;
+    final isRtl = isCurrentTextRtl;
+    box.textDirection = isRtl ? TextDirection.ltr : TextDirection.rtl;
+    updateTextBox(box);
+    notifyListeners();
+  }
+
+  void setTextDirection(TextDirection? direction) {
+    final box = activeTextBox;
+    if (box == null) return;
+    box.textDirection = direction;
+    updateTextBox(box);
+    notifyListeners();
+  }
+
   List<NoteTextBox> get textBoxes => List.unmodifiable(_textBoxes);
   String? get activeTextBoxId => _activeTextBoxId;
   NoteTextBox? get activeTextBox {
@@ -339,6 +370,9 @@ class CanvasController extends ChangeNotifier {
     if (_activeTextBoxId == id) return;
     _cleanUpEmptyTextBoxes(exceptId: id);
     _activeTextBoxId = id;
+    if (id != null) {
+      _selectedImageId = null;
+    }
     if (id == null) {
       setActiveRichTextController(null);
     }
@@ -467,13 +501,247 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
+  static int _nextImageId = 0;
+
+  List<NoteImage> get images => activePage.images;
+  String? get selectedImageId => _selectedImageId;
+  NoteImage? get selectedImage {
+    if (_selectedImageId == null) return null;
+    for (final page in _pages) {
+      for (final img in page.images) {
+        if (img.id == _selectedImageId) return img;
+      }
+    }
+    return null;
+  }
+
+  void selectImage(String? id) {
+    if (_selectedImageId == id) return;
+    _selectedImageId = id;
+    if (id != null) {
+      _activeTextBoxId = null;
+      setActiveRichTextController(null);
+      if (_activeTool != ToolType.text && _activeTool != ToolType.lasso) {
+        _activeTool = ToolType.lasso;
+      }
+    }
+    notifyListeners();
+  }
+
+  Future<NoteImage> addImage(
+    Uint8List bytes, {
+    Offset? position,
+    double? width,
+    double? height,
+    int? pageIndex,
+    String? name,
+  }) async {
+    _recordHistory();
+    _redoStack.clear();
+
+    final targetPage = pageIndex != null &&
+            pageIndex >= 0 &&
+            pageIndex < _pages.length
+        ? _pages[pageIndex]
+        : activePage;
+
+    double displayWidth = width ?? 350.0;
+    double displayHeight = height ?? 250.0;
+
+    if (width == null || height == null) {
+      final naturalSize = await ClipboardImageService.getImageSize(bytes);
+      if (naturalSize.width > 0 && naturalSize.height > 0) {
+        if (naturalSize.width > 450.0) {
+          displayWidth = 450.0;
+          displayHeight = (450.0 / naturalSize.width) * naturalSize.height;
+        } else {
+          displayWidth = max(naturalSize.width, 100.0);
+          displayHeight = max(naturalSize.height, 60.0);
+        }
+      }
+    }
+
+    final targetPos = position ??
+        Offset(
+          max(20.0, (AppConstants.defaultPageSize.width - displayWidth) / 2.0),
+          120.0,
+        );
+
+    final newImage = NoteImage(
+      id: 'img_${DateTime.now().microsecondsSinceEpoch}_${_nextImageId++}',
+      position: targetPos,
+      width: displayWidth,
+      height: displayHeight,
+      bytes: bytes,
+      name: name,
+    );
+
+    targetPage.images = [...targetPage.images, newImage];
+    _selectedImageId = newImage.id;
+    _activeTextBoxId = null;
+    if (_activeTool != ToolType.text && _activeTool != ToolType.lasso) {
+      _activeTool = ToolType.lasso;
+    }
+    notifyListeners();
+    return newImage;
+  }
+
+  void updateImage(NoteImage updated) {
+    for (final page in _pages) {
+      final idx = page.images.indexWhere((img) => img.id == updated.id);
+      if (idx != -1) {
+        final newImages = List<NoteImage>.from(page.images);
+        newImages[idx] = updated;
+        page.images = newImages;
+        notifyListeners();
+        return;
+      }
+    }
+  }
+
+  void updateImagePosition(String id, Offset newPosition) {
+    for (final page in _pages) {
+      final idx = page.images.indexWhere((img) => img.id == id);
+      if (idx != -1) {
+        page.images[idx].position = newPosition;
+        notifyListeners();
+        return;
+      }
+    }
+  }
+
+  void updateImageSize(String id, double newWidth, double newHeight) {
+    for (final page in _pages) {
+      final idx = page.images.indexWhere((img) => img.id == id);
+      if (idx != -1) {
+        page.images[idx].width = newWidth;
+        page.images[idx].height = newHeight;
+        notifyListeners();
+        return;
+      }
+    }
+  }
+
+  void deleteImage(String id) {
+    _recordHistory();
+    _redoStack.clear();
+    for (final page in _pages) {
+      page.images = page.images.where((img) => img.id != id).toList();
+    }
+    if (_selectedImageId == id) {
+      _selectedImageId = null;
+    }
+    notifyListeners();
+  }
+
+  void bringImageToFront(String id) {
+    for (final page in _pages) {
+      final idx = page.images.indexWhere((img) => img.id == id);
+      if (idx != -1 && idx < page.images.length - 1) {
+        _recordHistory();
+        _redoStack.clear();
+        final img = page.images.removeAt(idx);
+        page.images.add(img);
+        notifyListeners();
+        return;
+      }
+    }
+  }
+
+  void sendImageToBack(String id) {
+    for (final page in _pages) {
+      final idx = page.images.indexWhere((img) => img.id == id);
+      if (idx > 0) {
+        _recordHistory();
+        _redoStack.clear();
+        final img = page.images.removeAt(idx);
+        page.images.insert(0, img);
+        notifyListeners();
+        return;
+      }
+    }
+  }
+
+  void transferImageIfNeeded(String id) {
+    if (_pages.length <= 1) return;
+
+    int sourcePageIndex = -1;
+    NoteImage? image;
+    for (int i = 0; i < _pages.length; i++) {
+      for (final img in _pages[i].images) {
+        if (img.id == id) {
+          sourcePageIndex = i;
+          image = img;
+          break;
+        }
+      }
+      if (image != null) break;
+    }
+    if (image == null || sourcePageIndex == -1) return;
+
+    final centerGlobalY = AppConstants.pageHeaderHeight +
+        sourcePageIndex * AppConstants.pagePitch +
+        image.position.dy +
+        image.height / 2;
+    final targetPageIndex = (centerGlobalY / AppConstants.pagePitch)
+        .floor()
+        .clamp(0, _pages.length - 1);
+
+    if (targetPageIndex != sourcePageIndex) {
+      final yShift =
+          (sourcePageIndex - targetPageIndex) * AppConstants.pagePitch;
+      _pages[sourcePageIndex].images =
+          _pages[sourcePageIndex].images.where((img) => img.id != id).toList();
+
+      image.position = Offset(image.position.dx, image.position.dy + yShift);
+      _pages[targetPageIndex].images = [
+        ..._pages[targetPageIndex].images,
+        image,
+      ];
+      _activePageIndex = targetPageIndex;
+      notifyListeners();
+    }
+  }
+
+  void beginImageTransform() {
+    _recordHistory();
+    _redoStack.clear();
+  }
+
+  void commitImageTransform() {
+    notifyListeners();
+  }
+
+  Future<bool> pasteImageFromClipboard({Offset? targetPosition}) async {
+    final bytes = await ClipboardImageService.readImageFromClipboard();
+    if (bytes != null && bytes.isNotEmpty) {
+      await addImage(bytes, position: targetPosition);
+      return true;
+    }
+    return false;
+  }
+
+  Future<bool> pickAndInsertImage({Offset? targetPosition}) async {
+    final picked = await ClipboardImageService.pickImageFile();
+    if (picked != null && picked.bytes.isNotEmpty) {
+      await addImage(
+        picked.bytes,
+        position: targetPosition,
+        name: picked.name,
+      );
+      return true;
+    }
+    return false;
+  }
+
   void setTool(ToolType tool) {
     if (_activeTool == tool) return;
     if (_activeTool == ToolType.lasso) {
       deselect();
     }
-    if (tool != ToolType.text) {
+    if (tool != ToolType.text && tool != ToolType.lasso) {
       unfocusActiveTextBox();
+      _selectedImageId = null;
       _textTouchDownPos = null;
       _textDragDistance = 0.0;
     }
@@ -1043,6 +1311,37 @@ class CanvasController extends ChangeNotifier {
           }
         }
 
+        if (_selectedImageId != null) {
+          final img = selectedImage;
+          if (img != null) {
+            final activeRect = Rect.fromLTRB(
+              img.position.dx - 60.0,
+              img.position.dy - 16.0,
+              img.position.dx + img.width + 60.0,
+              img.position.dy + img.height + 56.0,
+            );
+            if (!activeRect.contains(tapPos)) {
+              selectImage(null);
+            }
+          } else {
+            selectImage(null);
+          }
+        }
+
+        // 1. Check if tapping an image
+        NoteImage? hitImg;
+        for (final img in activePage.images.reversed) {
+          if (img.bounds.inflate(10.0).contains(tapPos)) {
+            hitImg = img;
+            break;
+          }
+        }
+        if (hitImg != null) {
+          selectImage(hitImg.id);
+          return;
+        }
+
+        // 2. Check if tapping an existing text box
         NoteTextBox? hit;
         for (final box in _textBoxes.reversed) {
           if (box.bounds.inflate(28.0).contains(tapPos)) {
@@ -1156,14 +1455,52 @@ class CanvasController extends ChangeNotifier {
       if (isTap && _lassoTouchDownPos != null) {
         // --- SINGLE TAP SELECTION MODE ---
         // Search across all pages (active page first, then reverse chronological order)
-        Stroke? foundStroke;
-        int? foundPageIndex;
-
         final pageOrder = <int>[
           _activePageIndex,
           for (int i = _pages.length - 1; i >= 0; i--)
             if (i != _activePageIndex) i,
         ];
+
+        // 1. Check if tapping an image
+        NoteImage? foundImg;
+        int? foundImgPageIndex;
+        for (final p in pageOrder) {
+          if (p < 0 || p >= _pages.length) continue;
+          final yShift = (_activePageIndex - p) * AppConstants.pagePitch;
+          final localTap = _lassoTouchDownPos!.translate(0.0, yShift);
+          for (final img in _pages[p].images.reversed) {
+            final isImgSelected = _selectedImageId == img.id;
+            final bottomExtra = isImgSelected ? 56.0 : 16.0;
+            final horizontalExtra = isImgSelected ? 60.0 : 16.0;
+            final imgHitRect = Rect.fromLTRB(
+              img.position.dx - horizontalExtra,
+              img.position.dy - 16.0,
+              img.position.dx + img.width + horizontalExtra,
+              img.position.dy + img.height + bottomExtra,
+            );
+            if (imgHitRect.contains(localTap)) {
+              foundImg = img;
+              foundImgPageIndex = p;
+              break;
+            }
+          }
+          if (foundImg != null) break;
+        }
+
+        if (foundImg != null && foundImgPageIndex != null) {
+          deselect();
+          _activePageIndex = foundImgPageIndex;
+          selectImage(foundImg.id);
+          _lassoTouchDownPos = null;
+          _lassoDragDistance = 0.0;
+          lassoPointsNotifier.value = [];
+          notifyListeners();
+          return;
+        }
+
+        // 2. Check if tapping a stroke
+        Stroke? foundStroke;
+        int? foundPageIndex;
 
         for (final p in pageOrder) {
           if (p < 0 || p >= _pages.length) continue;
@@ -1181,14 +1518,17 @@ class CanvasController extends ChangeNotifier {
         }
 
         if (foundStroke != null && foundPageIndex != null) {
+          selectImage(null);
           _activePageIndex = foundPageIndex;
           _selectedStrokes = [foundStroke];
           _selectionBounds = LassoService.computeSelectionBounds([foundStroke]);
           _selectionRotation = 0.0;
         } else {
           deselect();
+          selectImage(null);
         }
-      } else if (points.length >= 3) {
+      }
+ else if (points.length >= 3) {
         // --- FREEFORM LASSO LOOP SELECTION ---
         // Search across all pages and margins
         final hitsPerPage = <int, List<Stroke>>{};
