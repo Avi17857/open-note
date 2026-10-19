@@ -530,6 +530,7 @@ class _NoteCanvasState extends State<NoteCanvas>
   }
 
   bool _isPointerOverAnyTextBox(Offset scenePos) {
+    if (widget.controller.activeTool != ToolType.text) return false;
     for (int i = 0; i < widget.controller.pages.length; i++) {
       final page = widget.controller.pages[i];
       final pageOriginY =
@@ -709,10 +710,9 @@ class _NoteCanvasState extends State<NoteCanvas>
                           (AppConstants.pageHeaderHeight +
                               activeIdx * AppConstants.pagePitch);
 
-                      // If touching inside an existing text box (and not lasso selecting),
+                      // If touching inside an existing text box in text mode,
                       // let the text box widget's own gesture detectors handle drag, resize, and typing
                       if (!isInteractingWithSelection &&
-                          widget.controller.activeTool != ToolType.lasso &&
                           _isPointerOverAnyTextBox(scenePos)) {
                         return;
                       }

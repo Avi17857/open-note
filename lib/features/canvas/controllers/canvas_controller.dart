@@ -331,6 +331,7 @@ class CanvasController extends ChangeNotifier {
   }
 
   void selectTextBox(String? id) {
+    if (id != null && _activeTool != ToolType.text) return;
     if (_activeTextBoxId == id) return;
     _cleanUpEmptyTextBoxes(exceptId: id);
     _activeTextBoxId = id;
@@ -467,8 +468,8 @@ class CanvasController extends ChangeNotifier {
     if (_activeTool == ToolType.lasso) {
       deselect();
     }
-    if (_activeTool == ToolType.text && tool != ToolType.text) {
-      selectTextBox(null);
+    if (tool != ToolType.text) {
+      unfocusActiveTextBox();
     }
     _activeTool = tool;
     _isDrawing = false;

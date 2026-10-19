@@ -490,5 +490,63 @@ void main() {
       expect(richCtrl.spans.first.end, 20);
       expect(richCtrl.spans.first.heading, HeadingLevel.h1);
     });
+
+    testWidgets('Text boxes are only selectable and focusable when in text tool mode', (tester) async {
+      tester.view.physicalSize = const Size(1200, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final controller = CanvasController();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: NoteCanvas(controller: controller),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      controller.setTool(ToolType.text);
+      final box = controller.addTextBox(const Offset(100, 100), text: 'Tool Exclusivity Note');
+      await tester.pumpAndSettle();
+
+      expect(controller.activeTextBoxId, box.id);
+      expect(find.byKey(const Key('text_box_drag_handle')), findsOneWidget);
+
+      // Switch to pen tool: text box must unfocus immediately and hide handles
+      controller.setTool(ToolType.pen);
+      await tester.pumpAndSettle();
+
+      expect(controller.activeTextBoxId, isNull);
+      expect(find.byKey(const Key('text_box_drag_handle')), findsNothing);
+
+      // Tap over the text box in pen mode: should ink over the text box without focusing it
+      final boxCenter = tester.getCenter(find.byType(TextField));
+      await tester.tapAt(boxCenter);
+      await tester.pumpAndSettle();
+
+      expect(controller.activeTextBoxId, isNull);
+      expect(controller.strokes.isNotEmpty, isTrue);
+
+      // Switch to lasso tool: tapping text box should not focus it
+      controller.setTool(ToolType.lasso);
+      await tester.pumpAndSettle();
+
+      await tester.tapAt(boxCenter);
+      await tester.pumpAndSettle();
+
+      expect(controller.activeTextBoxId, isNull);
+      expect(find.byKey(const Key('text_box_drag_handle')), findsNothing);
+
+      // Switch back to text tool: tapping selects/focuses the text box
+      controller.setTool(ToolType.text);
+      await tester.pumpAndSettle();
+
+      await tester.tapAt(boxCenter);
+      await tester.pumpAndSettle();
+
+      expect(controller.activeTextBoxId, box.id);
+      expect(find.byKey(const Key('text_box_drag_handle')), findsOneWidget);
+    });
   });
 }

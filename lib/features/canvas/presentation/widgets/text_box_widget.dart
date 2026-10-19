@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:open_note/features/canvas/controllers/canvas_controller.dart';
 import 'package:open_note/features/canvas/controllers/rich_text_editing_controller.dart';
 import 'package:open_note/features/canvas/models/note_text_box.dart';
+import 'package:open_note/features/canvas/models/tool_type.dart';
 import 'package:open_note/features/canvas/presentation/widgets/unbounded_hit_test.dart';
 
 /// An interactive, movable, and resizable rich text box placed directly on the canvas page.
@@ -58,7 +59,11 @@ class _TextBoxWidgetState extends State<TextBoxWidget> {
   @override
   void didUpdateWidget(covariant TextBoxWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.isSelected && !oldWidget.isSelected) {
+    final isTextTool = widget.controller.activeTool == ToolType.text;
+    if (!isTextTool && _focusNode.hasFocus) {
+      _focusNode.unfocus();
+    }
+    if (isTextTool && widget.isSelected && !oldWidget.isSelected) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           widget.controller.setActiveRichTextController(widget.richController);
@@ -67,7 +72,7 @@ class _TextBoxWidgetState extends State<TextBoxWidget> {
           }
         }
       });
-    } else if (!widget.isSelected && oldWidget.isSelected) {
+    } else if ((!widget.isSelected || !isTextTool) && oldWidget.isSelected) {
       if (_focusNode.hasFocus) {
         _focusNode.unfocus();
       }
@@ -76,8 +81,12 @@ class _TextBoxWidgetState extends State<TextBoxWidget> {
 
   void _onFocusChange() {
     if (_focusNode.hasFocus) {
-      widget.controller.selectTextBox(widget.textBox.id);
-      widget.controller.setActiveRichTextController(widget.richController);
+      if (widget.controller.activeTool == ToolType.text) {
+        widget.controller.selectTextBox(widget.textBox.id);
+        widget.controller.setActiveRichTextController(widget.richController);
+      } else {
+        _focusNode.unfocus();
+      }
     }
   }
 
@@ -90,7 +99,8 @@ class _TextBoxWidgetState extends State<TextBoxWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final isSelected = widget.isSelected;
+    final isTextTool = widget.controller.activeTool == ToolType.text;
+    final isSelected = widget.isSelected && isTextTool;
     final box = widget.textBox;
 
     final renderLeft = widget.boardPosition?.dx ?? box.position.dx;
@@ -116,63 +126,68 @@ class _TextBoxWidgetState extends State<TextBoxWidget> {
           clipBehavior: Clip.none,
           children: [
             // 1. Text Content Container (Fixed anchor: Never jumps or changes width on focus)
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.transparent,
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                  color: isSelected ? const Color(0xFF007AFF) : Colors.transparent,
-                  width: 1.5,
-                ),
-              ),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 10.0,
-                vertical: 6.0,
-              ),
-              child: Material(
-                color: Colors.transparent,
-                child: TextField(
-                  controller: widget.richController,
-                  focusNode: _focusNode,
-                  autofocus: widget.isSelected,
-                  maxLines: null,
-                  keyboardType: TextInputType.multiline,
-                  style: const TextStyle(
-                    fontSize: 15.0,
-                    color: Colors.black87,
-                    height: 1.4,
+            IgnorePointer(
+              ignoring: !isTextTool,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: isSelected ? const Color(0xFF007AFF) : Colors.transparent,
+                    width: 1.5,
                   ),
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
-                    border: InputBorder.none,
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10.0,
+                  vertical: 6.0,
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: TextField(
+                    controller: widget.richController,
+                    focusNode: _focusNode,
+                    readOnly: !isTextTool,
+                    canRequestFocus: isTextTool,
+                    autofocus: isSelected,
+                    maxLines: null,
+                    keyboardType: TextInputType.multiline,
+                    style: const TextStyle(
+                      fontSize: 15.0,
+                      color: Colors.black87,
+                      height: 1.4,
+                    ),
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                      border: InputBorder.none,
+                    ),
                   ),
                 ),
               ),
             ),
 
-              // 2. Top Drag Handle (Floats above text at top: -22, never pushing content down)
-              if (isSelected)
-                Positioned(
-                  top: -22,
-                  left: 0,
-                  right: 0,
-                  height: 20,
-                  child: _buildDragHandle(),
-                ),
+            // 2. Top Drag Handle (Floats above text at top: -22, never pushing content down)
+            if (isSelected)
+              Positioned(
+                top: -22,
+                left: 0,
+                right: 0,
+                height: 20,
+                child: _buildDragHandle(),
+              ),
 
-              // 3. Right-edge Resize Handle (Floats at right edge: -12, never shrinking content width)
-              if (isSelected)
-                Positioned(
-                  top: 0,
-                  bottom: 0,
-                  right: -12,
-                  width: 24,
-                  child: _buildResizeHandle(),
-                ),
-            ],
-          ),
+            // 3. Right-edge Resize Handle (Floats at right edge: -12, never shrinking content width)
+            if (isSelected)
+              Positioned(
+                top: 0,
+                bottom: 0,
+                right: -12,
+                width: 24,
+                child: _buildResizeHandle(),
+              ),
+          ],
         ),
+      ),
     );
   }
 
