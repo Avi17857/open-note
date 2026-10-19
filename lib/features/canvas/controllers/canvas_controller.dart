@@ -65,6 +65,10 @@ class CanvasController extends ChangeNotifier {
   List<Stroke>? _eraserGestureInitialStrokes;
   bool _eraserGestureDidModify = false;
 
+  // Text Tool Tap State (defers creation until pointer-up to distinguish taps from multi-touch pinch/drag)
+  Offset? _textTouchDownPos;
+  double _textDragDistance = 0.0;
+
   // Selection / Lasso Tool State
   final ValueNotifier<List<Offset>> lassoPointsNotifier =
       ValueNotifier<List<Offset>>([]);
@@ -470,6 +474,8 @@ class CanvasController extends ChangeNotifier {
     }
     if (tool != ToolType.text) {
       unfocusActiveTextBox();
+      _textTouchDownPos = null;
+      _textDragDistance = 0.0;
     }
     _activeTool = tool;
     _isDrawing = false;
@@ -698,21 +704,12 @@ class CanvasController extends ChangeNotifier {
       }
     }
 
-    // Text box tool handling
+    // Text box tool handling: Defer tap execution to pointer up so multi-touch pinch-to-zoom
+    // or pan gestures do not prematurely spawn a text box or summon the mobile virtual keyboard.
     if (_activeTool == ToolType.text) {
       _drawingPointerId = pointer;
-      NoteTextBox? hit;
-      for (final box in _textBoxes.reversed) {
-        if (box.bounds.inflate(28.0).contains(localPosition)) {
-          hit = box;
-          break;
-        }
-      }
-      if (hit != null) {
-        selectTextBox(hit.id);
-      } else {
-        addTextBox(localPosition);
-      }
+      _textTouchDownPos = localPosition;
+      _textDragDistance = 0.0;
       return;
     }
 
@@ -860,6 +857,13 @@ class CanvasController extends ChangeNotifier {
     if (_isMultiTouch || _activePointers.length >= 2) return;
     if (kind == PointerDeviceKind.touch && _isStylusActive) return; // Palm rejection
     if (_drawingPointerId != null && _drawingPointerId != pointer) return;
+
+    if (_activeTool == ToolType.text) {
+      if (_textTouchDownPos != null) {
+        _textDragDistance += (localPosition - _textTouchDownPos!).distance;
+      }
+      return;
+    }
 
     // S-Pen barrel button: instantly acts as an eraser while held
     final isBarrelButton = _isStylusButtonPressed(buttons);
@@ -1020,6 +1024,38 @@ class CanvasController extends ChangeNotifier {
       }
       _eraserGestureInitialStrokes = null;
       _eraserGestureDidModify = false;
+      return;
+    }
+
+    if (_activeTool == ToolType.text) {
+      final tapPos = _textTouchDownPos;
+      final dist = _textDragDistance;
+      _textTouchDownPos = null;
+      _textDragDistance = 0.0;
+      _drawingPointerId = null;
+
+      // Only act on stationary taps (not during drag, scroll, or cancelled pinch)
+      if (tapPos != null && dist < 12.0) {
+        if (activeTextBoxId != null) {
+          final box = activeTextBox;
+          if (box == null || !box.bounds.inflate(28.0).contains(tapPos)) {
+            unfocusActiveTextBox();
+          }
+        }
+
+        NoteTextBox? hit;
+        for (final box in _textBoxes.reversed) {
+          if (box.bounds.inflate(28.0).contains(tapPos)) {
+            hit = box;
+            break;
+          }
+        }
+        if (hit != null) {
+          selectTextBox(hit.id);
+        } else {
+          addTextBox(tapPos);
+        }
+      }
       return;
     }
 
@@ -1290,6 +1326,8 @@ class CanvasController extends ChangeNotifier {
       _drawingPointerId = null;
       _eraserPendingTouch = false;
       _eraserTouchDownPos = null;
+      _textTouchDownPos = null;
+      _textDragDistance = 0.0;
       if (_isDrawing) {
         _isDrawing = false;
         currentStrokeNotifier.value = [];

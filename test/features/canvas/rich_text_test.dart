@@ -228,6 +228,7 @@ void main() {
       canvasController.setTool(ToolType.text);
 
       canvasController.onPointerDown(const Offset(120, 200));
+      canvasController.onPointerUp(const Offset(120, 200));
       expect(canvasController.textBoxes.length, 1);
       final createdBox = canvasController.textBoxes.first;
       expect(createdBox.position.dx, 120.0);
@@ -236,6 +237,7 @@ void main() {
 
       // Tapping inside the existing box keeps it focused
       canvasController.onPointerDown(const Offset(130, 210));
+      canvasController.onPointerUp(const Offset(130, 210));
       expect(canvasController.textBoxes.length, 1);
       expect(canvasController.activeTextBoxId, createdBox.id);
     });
@@ -267,11 +269,13 @@ void main() {
     test('Empty text box is automatically removed when clicking off or switching away', () {
       canvasController.setTool(ToolType.text);
       canvasController.onPointerDown(const Offset(100, 100));
+      canvasController.onPointerUp(const Offset(100, 100));
       expect(canvasController.textBoxes.length, 1);
       final emptyBoxId = canvasController.textBoxes.first.id;
 
       // Click elsewhere to add a new box without typing in the first one
       canvasController.onPointerDown(const Offset(300, 300));
+      canvasController.onPointerUp(const Offset(300, 300));
       // First empty box should be gone, only the new box remains
       expect(canvasController.textBoxes.length, 1);
       expect(canvasController.textBoxes.first.id, isNot(equals(emptyBoxId)));
@@ -547,6 +551,51 @@ void main() {
 
       expect(controller.activeTextBoxId, box.id);
       expect(find.byKey(const Key('text_box_drag_handle')), findsOneWidget);
+    });
+
+    testWidgets('Pinch to zoom in text mode does not spawn a text box or focus', (tester) async {
+      tester.view.physicalSize = const Size(1200, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final controller = CanvasController();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: NoteCanvas(controller: controller),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      controller.setTool(ToolType.text);
+      expect(controller.textBoxes, isEmpty);
+
+      // Simulate 2-finger touch pinch-to-zoom
+      final finger1 = await tester.createGesture(kind: PointerDeviceKind.touch);
+      final finger2 = await tester.createGesture(kind: PointerDeviceKind.touch);
+
+      // Finger 1 down
+      await finger1.down(const Offset(400, 400));
+      await tester.pump(const Duration(milliseconds: 20));
+
+      // Finger 2 down (multi-touch pinch begins)
+      await finger2.down(const Offset(600, 400));
+      await tester.pump(const Duration(milliseconds: 20));
+
+      // Both fingers move outward to pinch zoom
+      await finger1.moveTo(const Offset(300, 400));
+      await finger2.moveTo(const Offset(700, 400));
+      await tester.pumpAndSettle();
+
+      // Lift both fingers
+      await finger1.up();
+      await finger2.up();
+      await tester.pumpAndSettle();
+
+      // VERIFY: Absolutely NO text box was created and no active text box ID!
+      expect(controller.textBoxes, isEmpty);
+      expect(controller.activeTextBoxId, isNull);
     });
   });
 }

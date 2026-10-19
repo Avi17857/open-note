@@ -610,7 +610,11 @@ class _NoteCanvasState extends State<NoteCanvas>
                       _activePointers[e.pointer] = e.localPosition;
 
                       if (_activePointers.length >= 2) {
-                        // Multi-touch pinch / pan initiated: cancel any pending single-finger stroke
+                        // Dismiss soft keyboard and unfocus active text box when multi-touch pinch starts
+                        FocusManager.instance.primaryFocus?.unfocus();
+                        widget.controller.unfocusActiveTextBox();
+
+                        // Multi-touch pinch / pan initiated: cancel any pending single-finger stroke or text tap
                         final primaryPtr = _primaryDrawingPointer;
                         if (primaryPtr != null) {
                           widget.controller.onPointerCancel(pointer: primaryPtr);
@@ -786,7 +790,7 @@ class _NoteCanvasState extends State<NoteCanvas>
                       _activePointers.remove(e.pointer);
 
                       if (_isPinching) {
-                        if (_activePointers.length < 2) {
+                        if (_activePointers.isEmpty) {
                           _isPinching = false;
                         }
                         return;
@@ -818,7 +822,7 @@ class _NoteCanvasState extends State<NoteCanvas>
                       _activePointers.remove(e.pointer);
 
                       if (_isPinching) {
-                        if (_activePointers.length < 2) {
+                        if (_activePointers.isEmpty) {
                           _isPinching = false;
                         }
                       }
