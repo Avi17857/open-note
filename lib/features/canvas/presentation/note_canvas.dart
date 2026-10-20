@@ -563,11 +563,12 @@ class _NoteCanvasState extends State<NoteCanvas>
           AppConstants.pageHeaderHeight + i * AppConstants.pagePitch;
       for (final img in page.images) {
         final isSelected = widget.controller.selectedImageId == img.id;
-        final bottomExtra = isSelected ? 56.0 : 16.0;
-        final horizontalExtra = isSelected ? 60.0 : 16.0;
+        final bottomExtra = isSelected ? 72.0 : 16.0;
+        final topExtra = isSelected ? 32.0 : 16.0;
+        final horizontalExtra = isSelected ? 72.0 : 16.0;
         final imgRect = Rect.fromLTRB(
           img.position.dx - horizontalExtra,
-          pageOriginY + img.position.dy - 16.0,
+          pageOriginY + img.position.dy - topExtra,
           img.position.dx + img.width + horizontalExtra,
           pageOriginY + img.position.dy + img.height + bottomExtra,
         );
@@ -945,6 +946,29 @@ class _NoteCanvasState extends State<NoteCanvas>
                                   ),
                                 ),
 
+                            // Layer 2.5: All interactive images across all pages
+                            for (int i = 0;
+                                i < widget.controller.pages.length;
+                                i++)
+                              for (final img in widget
+                                  .controller.pages[i].images)
+                                NoteImageWidget(
+                                  key: ValueKey(img.id),
+                                  image: img,
+                                  controller: widget.controller,
+                                  isSelected: widget.controller
+                                          .selectedImageId ==
+                                      img.id,
+                                  pageIndex: i,
+                                  boardPosition: Offset(
+                                    img.position.dx,
+                                    AppConstants.pageHeaderHeight +
+                                        i * AppConstants.pagePitch +
+                                        img.position.dy,
+                                  ),
+                                  renderRaster: false,
+                                ),
+
                             // Layer 3: Selection bounding box, handles, toolbar, and dragged strokes
                             if (widget.controller.hasSelection &&
                                 widget.controller.selectionBounds != null)
@@ -1151,14 +1175,36 @@ class _NoteCanvasState extends State<NoteCanvas>
                   ),
                 ),
 
-                // 2. Images on this page (rendered beneath highlighters and pens for clean annotation)
+                // 2. Images on this page (raster layer beneath highlighters and pens for clean annotation)
                 for (final img in page.images)
-                  NoteImageWidget(
-                    key: ValueKey(img.id),
-                    image: img,
-                    controller: widget.controller,
-                    isSelected: widget.controller.selectedImageId == img.id,
-                    pageIndex: pageIndex,
+                  Positioned(
+                    key: ValueKey('page_raster_${img.id}'),
+                    left: img.position.dx,
+                    top: img.position.dy,
+                    width: img.width,
+                    height: img.height,
+                    child: IgnorePointer(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: Image.memory(
+                          img.bytes,
+                          fit: BoxFit.fill,
+                          width: img.width,
+                          height: img.height,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              color: Colors.grey.shade200,
+                              alignment: Alignment.center,
+                              child: const Icon(
+                                Icons.broken_image_outlined,
+                                color: Colors.grey,
+                                size: 32,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
                   ),
 
                 // 3. Completed Highlighters

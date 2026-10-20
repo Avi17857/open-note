@@ -18,6 +18,8 @@ class NoteImageWidget extends StatefulWidget {
   final CanvasController controller;
   final bool isSelected;
   final int pageIndex;
+  final Offset? boardPosition;
+  final bool renderRaster;
 
   const NoteImageWidget({
     super.key,
@@ -25,6 +27,8 @@ class NoteImageWidget extends StatefulWidget {
     required this.controller,
     required this.isSelected,
     required this.pageIndex,
+    this.boardPosition,
+    this.renderRaster = true,
   });
 
   @override
@@ -52,9 +56,12 @@ class _NoteImageWidgetState extends State<NoteImageWidget> {
     final isSelected = widget.isSelected;
     final img = widget.image;
 
+    final renderLeft = widget.boardPosition?.dx ?? img.position.dx;
+    final renderTop = widget.boardPosition?.dy ?? img.position.dy;
+
     return Positioned(
-      left: img.position.dx,
-      top: img.position.dy,
+      left: renderLeft,
+      top: renderTop,
       width: img.width,
       height: img.height,
       child: UnboundedHitTest(
@@ -120,26 +127,28 @@ class _NoteImageWidgetState extends State<NoteImageWidget> {
                             ]
                           : null,
                     ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(3),
-                      child: Image.memory(
-                        img.bytes,
-                        fit: BoxFit.fill,
-                        width: img.width,
-                        height: img.height,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            color: Colors.grey.shade200,
-                            alignment: Alignment.center,
-                            child: const Icon(
-                              Icons.broken_image_outlined,
-                              color: Colors.grey,
-                              size: 32,
+                    child: widget.renderRaster
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(3),
+                            child: Image.memory(
+                              img.bytes,
+                              fit: BoxFit.fill,
+                              width: img.width,
+                              height: img.height,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  color: Colors.grey.shade200,
+                                  alignment: Alignment.center,
+                                  child: const Icon(
+                                    Icons.broken_image_outlined,
+                                    color: Colors.grey,
+                                    size: 32,
+                                  ),
+                                );
+                              },
                             ),
-                          );
-                        },
-                      ),
-                    ),
+                          )
+                        : const SizedBox.expand(),
                   ),
                 ),
               ),
@@ -153,8 +162,8 @@ class _NoteImageWidgetState extends State<NoteImageWidget> {
               _buildCornerHandle(ImageCorner.bottomRight, img.height - 14, img.width - 14),
             ],
 
-            // 3. Floating Contextual Toolbar (Floats 10px below image with explicit height)
-            if (isSelected)
+            // 3. Floating Contextual Toolbar (Floats 10px below image, hidden during active transform)
+            if (isSelected && !_isDragging && !_isResizing)
               Positioned(
                 top: img.height + 10,
                 left: -60,
@@ -240,6 +249,7 @@ class _NoteImageWidgetState extends State<NoteImageWidget> {
               _isResizing = false;
             });
             _resizeStartPos = null;
+            widget.controller.transferImageIfNeeded(widget.image.id);
             widget.controller.commitImageTransform();
           },
           onPanCancel: () {

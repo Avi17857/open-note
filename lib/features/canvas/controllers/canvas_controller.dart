@@ -1315,10 +1315,10 @@ class CanvasController extends ChangeNotifier {
           final img = selectedImage;
           if (img != null) {
             final activeRect = Rect.fromLTRB(
-              img.position.dx - 60.0,
-              img.position.dy - 16.0,
-              img.position.dx + img.width + 60.0,
-              img.position.dy + img.height + 56.0,
+              img.position.dx - 72.0,
+              img.position.dy - 32.0,
+              img.position.dx + img.width + 72.0,
+              img.position.dy + img.height + 72.0,
             );
             if (!activeRect.contains(tapPos)) {
               selectImage(null);
@@ -1328,15 +1328,39 @@ class CanvasController extends ChangeNotifier {
           }
         }
 
-        // 1. Check if tapping an image
+        // 1. Check if tapping an image across all pages
+        final pageOrder = <int>[
+          _activePageIndex,
+          for (int i = _pages.length - 1; i >= 0; i--)
+            if (i != _activePageIndex) i,
+        ];
         NoteImage? hitImg;
-        for (final img in activePage.images.reversed) {
-          if (img.bounds.inflate(10.0).contains(tapPos)) {
-            hitImg = img;
-            break;
+        int? hitImgPageIndex;
+        for (final p in pageOrder) {
+          if (p < 0 || p >= _pages.length) continue;
+          final yShift = (_activePageIndex - p) * AppConstants.pagePitch;
+          final localTap = tapPos.translate(0.0, yShift);
+          for (final img in _pages[p].images.reversed) {
+            final isImgSelected = _selectedImageId == img.id;
+            final bottomExtra = isImgSelected ? 72.0 : 16.0;
+            final topExtra = isImgSelected ? 32.0 : 16.0;
+            final horizontalExtra = isImgSelected ? 72.0 : 16.0;
+            final imgHitRect = Rect.fromLTRB(
+              img.position.dx - horizontalExtra,
+              img.position.dy - topExtra,
+              img.position.dx + img.width + horizontalExtra,
+              img.position.dy + img.height + bottomExtra,
+            );
+            if (imgHitRect.contains(localTap)) {
+              hitImg = img;
+              hitImgPageIndex = p;
+              break;
+            }
           }
+          if (hitImg != null) break;
         }
-        if (hitImg != null) {
+        if (hitImg != null && hitImgPageIndex != null) {
+          _activePageIndex = hitImgPageIndex;
           selectImage(hitImg.id);
           return;
         }
@@ -1470,11 +1494,12 @@ class CanvasController extends ChangeNotifier {
           final localTap = _lassoTouchDownPos!.translate(0.0, yShift);
           for (final img in _pages[p].images.reversed) {
             final isImgSelected = _selectedImageId == img.id;
-            final bottomExtra = isImgSelected ? 56.0 : 16.0;
-            final horizontalExtra = isImgSelected ? 60.0 : 16.0;
+            final bottomExtra = isImgSelected ? 72.0 : 16.0;
+            final topExtra = isImgSelected ? 32.0 : 16.0;
+            final horizontalExtra = isImgSelected ? 72.0 : 16.0;
             final imgHitRect = Rect.fromLTRB(
               img.position.dx - horizontalExtra,
-              img.position.dy - 16.0,
+              img.position.dy - topExtra,
               img.position.dx + img.width + horizontalExtra,
               img.position.dy + img.height + bottomExtra,
             );

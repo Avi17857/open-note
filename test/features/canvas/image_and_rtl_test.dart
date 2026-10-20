@@ -466,5 +466,88 @@ void main() {
 
       expect(controller.selectedImageId, img.id);
     });
+
+    testWidgets('Dragging and resizing image positioned outside page in pasteboard', (tester) async {
+      final controller = CanvasController();
+      final sampleBytes = createSamplePngBytes();
+
+      // Place image outside the page in the left pasteboard (x = -120)
+      final img = await controller.addImage(
+        sampleBytes,
+        position: const Offset(-120, 150),
+        width: 200,
+        height: 150,
+      );
+
+      expect(controller.selectedImageId, img.id);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: NoteCanvas(controller: controller),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final initialPos = img.position;
+      final initialWidth = img.width;
+
+      // 1. Drag the image from outside the page
+      final imgWidget = find.byType(NoteImageWidget);
+      expect(imgWidget, findsOneWidget);
+
+      await tester.drag(imgWidget, const Offset(60, 40));
+      await tester.pumpAndSettle();
+
+      expect(controller.images.first.position.dx, greaterThan(initialPos.dx));
+      expect(controller.images.first.position.dy, greaterThan(initialPos.dy));
+
+      // 2. Resize via corner handle in pasteboard
+      final bottomRightHandle = find.byKey(const Key('image_corner_handle_bottomRight'));
+      expect(bottomRightHandle, findsOneWidget);
+
+      final gesture = await tester.startGesture(tester.getCenter(bottomRightHandle));
+      await gesture.moveBy(const Offset(30, 30));
+      await gesture.moveBy(const Offset(30, 30));
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(controller.images.first.width, greaterThan(initialWidth));
+    });
+
+    testWidgets('Inking tool draws stroke on top of image raster on canvas', (tester) async {
+      final controller = CanvasController();
+      final sampleBytes = createSamplePngBytes();
+
+      await controller.addImage(
+        sampleBytes,
+        position: const Offset(100, 100),
+        width: 300,
+        height: 200,
+      );
+
+      // Switch to pen tool
+      controller.setTool(ToolType.pen);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: NoteCanvas(controller: controller),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(controller.selectedImageId, isNull);
+
+      // Draw stroke across the image
+      final gesture = await tester.startGesture(const Offset(200, 200));
+      await gesture.moveBy(const Offset(50, 50));
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(controller.strokes.isNotEmpty, isTrue, reason: 'Stroke should be drawn on top of the image');
+    });
   });
 }
