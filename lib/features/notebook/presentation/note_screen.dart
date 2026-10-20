@@ -5,6 +5,7 @@ import 'package:open_note/features/canvas/presentation/note_canvas.dart';
 import 'package:open_note/features/canvas/presentation/painters/page_background_painter.dart';
 import 'package:open_note/features/notebook/controllers/notebook_controller.dart';
 import 'package:open_note/features/notebook/presentation/notebook_drawer.dart';
+import 'package:open_note/features/notebook/presentation/widgets/export_pdf_dialog.dart';
 
 class NoteScreen extends StatefulWidget {
   const NoteScreen({super.key});
@@ -142,6 +143,20 @@ class _NoteScreenState extends State<NoteScreen> {
                     ),
                   ),
                 ],
+              ),
+
+              // Export Note as PDF
+              IconButton(
+                icon: const Icon(Icons.picture_as_pdf_outlined, color: Colors.white),
+                tooltip: 'Export as PDF',
+                onPressed: () {
+                  _notebookController.syncCurrentNote();
+                  ExportPdfDialog.show(
+                    context,
+                    document: _notebookController.currentNote,
+                    initialTemplate: _pageTemplate,
+                  );
+                },
               ),
 
               // Save Note

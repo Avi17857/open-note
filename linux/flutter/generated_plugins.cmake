@@ -4,6 +4,7 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   irondash_engine_context
+  printing
   super_native_extensions
 )
 

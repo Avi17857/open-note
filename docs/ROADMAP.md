@@ -65,11 +65,10 @@ OpenNote bridges the gap between the fluid inking experience of **Samsung Notes*
 ---
 
 ## Milestone 4: Page Templates & Canvas Sizing
-- [ ] **Paper Backgrounds:**
+- [x] **Paper Backgrounds:**
   - Blank / Plain
   - Ruled / Lined (custom line spacing)
   - Grid / Graph paper
-  - Dot grid
 - [ ] **Canvas Modes:**
   - Standard Paged Mode (fixed A4/Letter dimensions with vertical page-scrolling).
   - Infinite Canvas Mode (panning and two-finger pinch-to-zoom).
@@ -102,6 +101,12 @@ OpenNote bridges the gap between the fluid inking experience of **Samsung Notes*
 ---
 
 ## Milestone 7: Storage, Export & Sync
-- [ ] **Robust File Format:** Structured JSON / zipped package format storing vector stroke coordinates and text box spans.
-- [ ] **Auto-Save & Background Flushing:** Debounced background saves so drawing never drops frames.
-- [ ] **Export Options:** Export to PDF, PNG, and vector SVG.
+- [x] **Robust File Format:** Structured JSON format storing vector stroke coordinates, attributed text spans, and base64 embedded images.
+- [x] **Auto-Save & Background Flushing:** Debounced background saves so drawing never drops frames.
+- [x] **PDF Document Export:**
+  - Standard Inbound Page Bounds mode (1:1 scale matching note page dimensions).
+  - Infinite Canvas / Pasteboard mode (shrink-to-fit: computes content bounding box and scales down proportionally to fit the entire canvas on the page).
+  - High-fidelity vector stroke rendering: ballpoint pens, pressure-responsive fountain pen ribbons, and translucent highlighters.
+  - Multi-layer composite: paper background (blank, ruled lines, grid), raster images, inking strokes over images, and rich text formatting (headings, colors, highlights, LTR/RTL).
+  - Cross-platform sharing / download dialog via `Printing.sharePdf`.
+- [ ] **Vector & Raster Exports:** Export to PNG and vector SVG.

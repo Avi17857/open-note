@@ -105,6 +105,11 @@ class NotebookController extends ChangeNotifier {
     _currentNote.updatedAt = DateTime.now();
   }
 
+  /// Synchronizes canvas in-memory pages to the current note document model.
+  void syncCurrentNote() {
+    _syncCurrentNote();
+  }
+
   Future<void> saveCurrentNote() async {
     _syncCurrentNote();
     _isLoading = true;
