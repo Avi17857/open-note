@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:open_note/core/theme/app_colors.dart';
 import 'package:open_note/features/canvas/controllers/canvas_controller.dart';
 import 'package:open_note/features/canvas/controllers/rich_text_editing_controller.dart';
 import 'package:open_note/features/canvas/models/note_text_box.dart';
@@ -149,27 +150,32 @@ class _TextBoxWidgetState extends State<TextBoxWidget> {
                 ),
                 child: Material(
                   color: Colors.transparent,
-                  child: TextField(
-                    controller: widget.richController,
-                    focusNode: _focusNode,
-                    readOnly: !isTextTool,
-                    canRequestFocus: isTextTool,
-                    autofocus: isSelected,
-                    maxLines: null,
-                    textDirection: effectiveDirection,
-                    textAlign: isRtl ? TextAlign.right : TextAlign.left,
-                    keyboardType: TextInputType.multiline,
-                    style: const TextStyle(
-                      fontSize: 15.0,
-                      color: Colors.black87,
-                      height: 1.4,
-                    ),
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      contentPadding: EdgeInsets.zero,
-                      border: InputBorder.none,
-                    ),
-                  ),
+                  child: Builder(builder: (context) {
+                    final isDark = widget.controller.isDarkMode;
+                    widget.richController.isDarkMode = isDark;
+                    return TextField(
+                      controller: widget.richController,
+                      focusNode: _focusNode,
+                      readOnly: !isTextTool,
+                      canRequestFocus: isTextTool,
+                      autofocus: isSelected,
+                      maxLines: null,
+                      textDirection: effectiveDirection,
+                      textAlign: isRtl ? TextAlign.right : TextAlign.left,
+                      keyboardType: TextInputType.multiline,
+                      cursorColor: isDark ? Colors.white : AppColors.primary,
+                      style: TextStyle(
+                        fontSize: 15.0,
+                        color: isDark ? Colors.white : Colors.black87,
+                        height: 1.4,
+                      ),
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        contentPadding: EdgeInsets.zero,
+                        border: InputBorder.none,
+                      ),
+                    );
+                  }),
                 ),
               ),
             ),

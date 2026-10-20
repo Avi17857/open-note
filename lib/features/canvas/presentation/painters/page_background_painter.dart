@@ -10,10 +10,12 @@ enum PageTemplate {
 class PageBackgroundPainter extends CustomPainter {
   final PageTemplate template;
   final double lineSpacing;
+  final bool isDarkMode;
 
   PageBackgroundPainter({
     this.template = PageTemplate.ruled,
     this.lineSpacing = 32.0,
+    this.isDarkMode = false,
   });
 
   @override
@@ -21,9 +23,13 @@ class PageBackgroundPainter extends CustomPainter {
     if (template == PageTemplate.blank) return;
 
     final linePaint = Paint()
-      ..color = template == PageTemplate.ruled
-          ? AppColors.ruledLine
-          : AppColors.gridLine
+      ..color = isDarkMode
+          ? (template == PageTemplate.ruled
+              ? AppColors.ruledLineDark
+              : AppColors.gridLineDark)
+          : (template == PageTemplate.ruled
+              ? AppColors.ruledLine
+              : AppColors.gridLine)
       ..strokeWidth = 1.0;
 
     // Draw horizontal lines
@@ -42,6 +48,7 @@ class PageBackgroundPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant PageBackgroundPainter oldDelegate) {
     return oldDelegate.template != template ||
-        oldDelegate.lineSpacing != lineSpacing;
+        oldDelegate.lineSpacing != lineSpacing ||
+        oldDelegate.isDarkMode != isDarkMode;
   }
 }

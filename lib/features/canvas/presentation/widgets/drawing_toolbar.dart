@@ -6,6 +6,7 @@ import 'package:open_note/features/canvas/models/tool_type.dart';
 import 'package:open_note/features/canvas/presentation/widgets/custom_color_picker_dialog.dart';
 import 'package:open_note/features/canvas/presentation/widgets/eraser_radius_picker.dart';
 import 'package:open_note/features/canvas/presentation/widgets/stroke_width_picker.dart';
+import 'package:open_note/features/canvas/presentation/widgets/tool_icon.dart';
 
 class DrawingToolbar extends StatelessWidget {
   final CanvasController controller;
@@ -25,11 +26,11 @@ class DrawingToolbar extends StatelessWidget {
 
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            boxShadow: [
+          decoration: BoxDecoration(
+            color: controller.isDarkMode ? AppColors.toolbarDark : Colors.white,
+            boxShadow: const [
               BoxShadow(
-                color: Color(0x15000000),
+                color: Color(0x1F000000),
                 blurRadius: 4,
                 offset: Offset(0, 2),
               ),
@@ -42,10 +43,33 @@ class DrawingToolbar extends StatelessWidget {
               children: [
                 // Tool Selector (Segmented)
                 SegmentedButton<ToolType>(
+                  style: SegmentedButton.styleFrom(
+                    backgroundColor: controller.isDarkMode
+                        ? const Color(0xFF2C2C36)
+                        : Colors.grey.shade100,
+                    foregroundColor: controller.isDarkMode
+                        ? Colors.white70
+                        : Colors.black87,
+                    selectedForegroundColor: Colors.white,
+                    selectedBackgroundColor: AppColors.primary,
+                    side: BorderSide(
+                      color: controller.isDarkMode
+                          ? const Color(0xFF444455)
+                          : Colors.grey.shade300,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
                   segments: ToolType.values.map((tool) {
                     return ButtonSegment<ToolType>(
                       value: tool,
-                      icon: Icon(tool.icon, size: 20),
+                      icon: ToolIcon(
+                        tool: tool,
+                        size: 20,
+                        isSelected: activeTool == tool,
+                        isDarkMode: controller.isDarkMode,
+                      ),
                       tooltip: tool.label,
                     );
                   }).toList(),
@@ -57,7 +81,14 @@ class DrawingToolbar extends StatelessWidget {
                 ),
 
                 const SizedBox(width: 12),
-                const VerticalDivider(width: 1, indent: 8, endIndent: 8),
+                VerticalDivider(
+                  width: 1,
+                  indent: 8,
+                  endIndent: 8,
+                  color: controller.isDarkMode
+                      ? const Color(0xFF444455)
+                      : Colors.grey.shade300,
+                ),
                 const SizedBox(width: 12),
 
                 // Stroke Width Button (only shown for drawing tools)
@@ -73,9 +104,15 @@ class DrawingToolbar extends StatelessWidget {
                           vertical: 6,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
+                          color: controller.isDarkMode
+                              ? const Color(0xFF2C2C36)
+                              : Colors.grey.shade100,
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.grey.shade300),
+                          border: Border.all(
+                            color: controller.isDarkMode
+                                ? const Color(0xFF444455)
+                                : Colors.grey.shade300,
+                          ),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -88,7 +125,9 @@ class DrawingToolbar extends StatelessWidget {
                                 width: controller.strokeWidth.clamp(3.0, 16.0),
                                 height: controller.strokeWidth.clamp(3.0, 16.0),
                                 decoration: BoxDecoration(
-                                  color: controller.activeColor,
+                                  color: controller.getDisplayStrokeColor(
+                                    controller.activeColor,
+                                  ),
                                   shape: activeTool == ToolType.highlighter
                                       ? BoxShape.rectangle
                                       : BoxShape.circle,
@@ -102,19 +141,35 @@ class DrawingToolbar extends StatelessWidget {
                             const SizedBox(width: 6),
                             Text(
                               '${controller.strokeWidth.toInt()}pt',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.bold,
+                                color: controller.isDarkMode
+                                    ? Colors.white
+                                    : Colors.black87,
                               ),
                             ),
-                            const Icon(Icons.arrow_drop_down, size: 18),
+                            Icon(
+                              Icons.arrow_drop_down,
+                              size: 18,
+                              color: controller.isDarkMode
+                                  ? Colors.white70
+                                  : Colors.black87,
+                            ),
                           ],
                         ),
                       ),
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const VerticalDivider(width: 1, indent: 8, endIndent: 8),
+                  VerticalDivider(
+                    width: 1,
+                    indent: 8,
+                    endIndent: 8,
+                    color: controller.isDarkMode
+                        ? const Color(0xFF444455)
+                        : Colors.grey.shade300,
+                  ),
                   const SizedBox(width: 12),
                 ],
 
@@ -131,38 +186,57 @@ class DrawingToolbar extends StatelessWidget {
                           vertical: 6,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
+                          color: controller.isDarkMode
+                              ? const Color(0xFF2C2C36)
+                              : Colors.grey.shade100,
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.grey.shade300),
+                          border: Border.all(
+                            color: controller.isDarkMode
+                                ? const Color(0xFF444455)
+                                : Colors.grey.shade300,
+                          ),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(
-                              activeTool == ToolType.areaEraser
-                                  ? Icons.cleaning_services
-                                  : Icons.auto_fix_normal,
-                              size: 16,
-                              color: activeTool == ToolType.areaEraser
-                                  ? Colors.orange.shade800
-                                  : Colors.red.shade800,
+                            ToolIcon(
+                              tool: activeTool,
+                              size: 18,
+                              isSelected: false,
+                              isDarkMode: controller.isDarkMode,
                             ),
                             const SizedBox(width: 6),
                             Text(
                               '${controller.eraserRadius.toInt()}pt',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.bold,
+                                color: controller.isDarkMode
+                                    ? Colors.white
+                                    : Colors.black87,
                               ),
                             ),
-                            const Icon(Icons.arrow_drop_down, size: 18),
+                            Icon(
+                              Icons.arrow_drop_down,
+                              size: 18,
+                              color: controller.isDarkMode
+                                  ? Colors.white70
+                                  : Colors.black87,
+                            ),
                           ],
                         ),
                       ),
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const VerticalDivider(width: 1, indent: 8, endIndent: 8),
+                  VerticalDivider(
+                    width: 1,
+                    indent: 8,
+                    endIndent: 8,
+                    color: controller.isDarkMode
+                        ? const Color(0xFF444455)
+                        : Colors.grey.shade300,
+                  ),
                   const SizedBox(width: 12),
                 ],
 
@@ -172,7 +246,13 @@ class DrawingToolbar extends StatelessWidget {
                     Tooltip(
                       message: 'Duplicate Selection',
                       child: IconButton(
-                        icon: const Icon(Icons.copy_rounded, size: 20),
+                        icon: Icon(
+                          Icons.copy_rounded,
+                          size: 20,
+                          color: controller.isDarkMode
+                              ? Colors.white70
+                              : Colors.black87,
+                        ),
                         onPressed: controller.duplicateSelection,
                       ),
                     ),
@@ -182,7 +262,7 @@ class DrawingToolbar extends StatelessWidget {
                         icon: Icon(
                           Icons.delete_outline_rounded,
                           size: 20,
-                          color: Colors.red.shade700,
+                          color: Colors.red.shade400,
                         ),
                         onPressed: controller.deleteSelection,
                       ),
@@ -190,12 +270,25 @@ class DrawingToolbar extends StatelessWidget {
                     Tooltip(
                       message: 'Deselect',
                       child: IconButton(
-                        icon: const Icon(Icons.close_rounded, size: 20),
+                        icon: Icon(
+                          Icons.close_rounded,
+                          size: 20,
+                          color: controller.isDarkMode
+                              ? Colors.white70
+                              : Colors.black87,
+                        ),
                         onPressed: controller.deselect,
                       ),
                     ),
                     const SizedBox(width: 8),
-                    const VerticalDivider(width: 1, indent: 8, endIndent: 8),
+                    VerticalDivider(
+                      width: 1,
+                      indent: 8,
+                      endIndent: 8,
+                      color: controller.isDarkMode
+                          ? const Color(0xFF444455)
+                          : Colors.grey.shade300,
+                    ),
                     const SizedBox(width: 8),
                   ] else ...[
                     Container(
@@ -204,9 +297,15 @@ class DrawingToolbar extends StatelessWidget {
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.blue.shade50,
+                        color: controller.isDarkMode
+                            ? const Color(0xFF1E2838)
+                            : Colors.blue.shade50,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.blue.shade200),
+                        border: Border.all(
+                          color: controller.isDarkMode
+                              ? const Color(0xFF2E4568)
+                              : Colors.blue.shade200,
+                        ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -214,14 +313,18 @@ class DrawingToolbar extends StatelessWidget {
                           Icon(
                             Icons.touch_app_outlined,
                             size: 16,
-                            color: Colors.blue.shade700,
+                            color: controller.isDarkMode
+                                ? const Color(0xFF90CAF9)
+                                : Colors.blue.shade700,
                           ),
                           const SizedBox(width: 6),
                           Text(
                             'Tap or circle strokes to select',
                             style: TextStyle(
                               fontSize: 12,
-                              color: Colors.blue.shade800,
+                              color: controller.isDarkMode
+                                  ? const Color(0xFF90CAF9)
+                                  : Colors.blue.shade800,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -229,7 +332,14 @@ class DrawingToolbar extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    const VerticalDivider(width: 1, indent: 8, endIndent: 8),
+                    VerticalDivider(
+                      width: 1,
+                      indent: 8,
+                      endIndent: 8,
+                      color: controller.isDarkMode
+                          ? const Color(0xFF444455)
+                          : Colors.grey.shade300,
+                    ),
                     const SizedBox(width: 12),
                   ],
                 ],
@@ -289,13 +399,17 @@ class DrawingToolbar extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(horizontal: 6),
                         decoration: BoxDecoration(
                           color: controller.isCurrentTextRtl
-                              ? const Color(0xFF007AFF).withValues(alpha: 0.15)
+                              ? const Color(0xFF007AFF).withValues(
+                                  alpha: controller.isDarkMode ? 0.35 : 0.15,
+                                )
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(6),
                           border: Border.all(
                             color: controller.isCurrentTextRtl
                                 ? const Color(0xFF007AFF)
-                                : Colors.grey.shade300,
+                                : (controller.isDarkMode
+                                    ? const Color(0xFF444455)
+                                    : Colors.grey.shade300),
                           ),
                         ),
                         child: Row(
@@ -307,8 +421,10 @@ class DrawingToolbar extends StatelessWidget {
                                   : Icons.format_textdirection_l_to_r_rounded,
                               size: 16,
                               color: controller.isCurrentTextRtl
-                                  ? const Color(0xFF007AFF)
-                                  : Colors.black87,
+                                  ? const Color(0xFF64B5F6)
+                                  : (controller.isDarkMode
+                                      ? Colors.white70
+                                      : Colors.black87),
                             ),
                             const SizedBox(width: 3),
                             Text(
@@ -317,8 +433,10 @@ class DrawingToolbar extends StatelessWidget {
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
                                 color: controller.isCurrentTextRtl
-                                    ? const Color(0xFF007AFF)
-                                    : Colors.black87,
+                                    ? const Color(0xFF64B5F6)
+                                    : (controller.isDarkMode
+                                        ? Colors.white70
+                                        : Colors.black87),
                               ),
                             ),
                           ],
@@ -328,7 +446,14 @@ class DrawingToolbar extends StatelessWidget {
                   ),
 
                   const SizedBox(width: 8),
-                  const VerticalDivider(width: 1, indent: 8, endIndent: 8),
+                  VerticalDivider(
+                    width: 1,
+                    indent: 8,
+                    endIndent: 8,
+                    color: controller.isDarkMode
+                        ? const Color(0xFF444455)
+                        : Colors.grey.shade300,
+                  ),
                   const SizedBox(width: 8),
 
                   // 3. Text Font Color Picker Menu
@@ -340,20 +465,49 @@ class DrawingToolbar extends StatelessWidget {
                   _buildTextHighlightMenu(context),
 
                   const SizedBox(width: 8),
-                  const VerticalDivider(width: 1, indent: 8, endIndent: 8),
+                  VerticalDivider(
+                    width: 1,
+                    indent: 8,
+                    endIndent: 8,
+                    color: controller.isDarkMode
+                        ? const Color(0xFF444455)
+                        : Colors.grey.shade300,
+                  ),
                   const SizedBox(width: 8),
 
                   // 5. Spawn new text box button
                   Tooltip(
                     message: 'Add new text box',
                     child: OutlinedButton.icon(
-                      icon: const Icon(Icons.add_rounded, size: 18),
-                      label: const Text('Add Box', style: TextStyle(fontSize: 12)),
+                      icon: Icon(
+                        Icons.add_rounded,
+                        size: 18,
+                        color: controller.isDarkMode
+                            ? Colors.white
+                            : Colors.black87,
+                      ),
+                      label: Text(
+                        'Add Box',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: controller.isDarkMode
+                              ? Colors.white
+                              : Colors.black87,
+                        ),
+                      ),
                       style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
                         visualDensity: VisualDensity.compact,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
+                        ),
+                        side: BorderSide(
+                          color: controller.isDarkMode
+                              ? const Color(0xFF444455)
+                              : Colors.grey.shade300,
                         ),
                       ),
                       onPressed: () {
@@ -371,7 +525,7 @@ class DrawingToolbar extends StatelessWidget {
                         icon: Icon(
                           Icons.delete_outline_rounded,
                           size: 20,
-                          color: Colors.red.shade700,
+                          color: Colors.red.shade400,
                         ),
                         onPressed: controller.deleteActiveTextBox,
                       ),
@@ -379,10 +533,12 @@ class DrawingToolbar extends StatelessWidget {
                     Tooltip(
                       message: 'Done / Deselect',
                       child: IconButton(
-                        icon: const Icon(
+                        icon: Icon(
                           Icons.check_rounded,
                           size: 20,
-                          color: Color(0xFF007AFF),
+                          color: controller.isDarkMode
+                              ? const Color(0xFF64B5F6)
+                              : const Color(0xFF007AFF),
                         ),
                         onPressed: controller.unfocusActiveTextBox,
                       ),
@@ -390,7 +546,14 @@ class DrawingToolbar extends StatelessWidget {
                   ],
 
                   const SizedBox(width: 12),
-                  const VerticalDivider(width: 1, indent: 8, endIndent: 8),
+                  VerticalDivider(
+                    width: 1,
+                    indent: 8,
+                    endIndent: 8,
+                    color: controller.isDarkMode
+                        ? const Color(0xFF444455)
+                        : Colors.grey.shade300,
+                  ),
                   const SizedBox(width: 12),
                 ],
 
@@ -404,26 +567,48 @@ class DrawingToolbar extends StatelessWidget {
                       ...currentPalette.map((color) {
                         final isSelected =
                             controller.activeColor.toARGB32() == color.toARGB32();
-                        return GestureDetector(
-                          onTap: () => controller.setColor(color),
-                          child: Container(
-                            margin: const EdgeInsets.symmetric(horizontal: 3.0),
-                            width: 26,
-                            height: 26,
-                            decoration: BoxDecoration(
-                              color: color,
-                              shape: activeTool == ToolType.highlighter
-                                  ? BoxShape.rectangle
-                                  : BoxShape.circle,
-                              borderRadius: activeTool == ToolType.highlighter
-                                  ? BorderRadius.circular(4)
-                                  : null,
-                              border: Border.all(
-                                color: isSelected
-                                    ? AppColors.primary
-                                    : Colors.grey.shade400,
-                                width: isSelected ? 2.5 : 1.0,
+                        final isNearBlack = CanvasController.isNearBlack(color);
+                        return Tooltip(
+                          message: isNearBlack && controller.isDarkMode
+                              ? 'Black Ink (renders white in Dark Mode)'
+                              : 'Ink Color',
+                          child: GestureDetector(
+                            onTap: () => controller.setColor(color),
+                            child: Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 3.0),
+                              width: 26,
+                              height: 26,
+                              decoration: BoxDecoration(
+                                color: color,
+                                shape: activeTool == ToolType.highlighter
+                                    ? BoxShape.rectangle
+                                    : BoxShape.circle,
+                                borderRadius: activeTool == ToolType.highlighter
+                                    ? BorderRadius.circular(4)
+                                    : null,
+                                border: Border.all(
+                                  color: isSelected
+                                      ? AppColors.primary
+                                      : (controller.isDarkMode
+                                          ? (isNearBlack
+                                              ? Colors.grey.shade600
+                                              : Colors.grey.shade700)
+                                          : Colors.grey.shade400),
+                                  width: isSelected ? 2.5 : 1.0,
+                                ),
                               ),
+                              child: isNearBlack && controller.isDarkMode
+                                  ? Center(
+                                      child: Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: const BoxDecoration(
+                                          color: Colors.white,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                    )
+                                  : null,
                             ),
                           ),
                         );
@@ -473,17 +658,23 @@ class DrawingToolbar extends StatelessWidget {
                             width: 26,
                             height: 26,
                             decoration: BoxDecoration(
-                              color: Colors.grey.shade100,
+                              color: controller.isDarkMode
+                                  ? const Color(0xFF2C2C36)
+                                  : Colors.grey.shade100,
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: Colors.grey.shade400,
+                                color: controller.isDarkMode
+                                    ? const Color(0xFF444455)
+                                    : Colors.grey.shade400,
                                 width: 1.0,
                               ),
                             ),
-                            child: const Icon(
+                            child: Icon(
                               Icons.palette_outlined,
                               size: 15,
-                              color: Colors.black87,
+                              color: controller.isDarkMode
+                                  ? Colors.white70
+                                  : Colors.black87,
                             ),
                           ),
                         ),
@@ -491,7 +682,14 @@ class DrawingToolbar extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(width: 12),
-                  const VerticalDivider(width: 1, indent: 8, endIndent: 8),
+                  VerticalDivider(
+                    width: 1,
+                    indent: 8,
+                    endIndent: 8,
+                    color: controller.isDarkMode
+                        ? const Color(0xFF444455)
+                        : Colors.grey.shade300,
+                  ),
                   const SizedBox(width: 12),
                 ],
 
@@ -499,24 +697,61 @@ class DrawingToolbar extends StatelessWidget {
                 _buildImageMenuButton(context),
 
                 const SizedBox(width: 8),
-                const VerticalDivider(width: 1, indent: 8, endIndent: 8),
+                VerticalDivider(
+                  width: 1,
+                  indent: 8,
+                  endIndent: 8,
+                  color: controller.isDarkMode
+                      ? const Color(0xFF444455)
+                      : Colors.grey.shade300,
+                ),
                 const SizedBox(width: 8),
 
                 // Undo / Redo
                 IconButton(
-                  icon: const Icon(Icons.undo, size: 20),
+                  icon: Icon(
+                    Icons.undo_rounded,
+                    size: 20,
+                    color: controller.canUndo
+                        ? (controller.isDarkMode
+                            ? Colors.white
+                            : Colors.black87)
+                        : (controller.isDarkMode
+                            ? Colors.white24
+                            : Colors.black26),
+                  ),
                   tooltip: 'Undo',
                   onPressed: controller.canUndo ? controller.undo : null,
                 ),
                 IconButton(
-                  icon: const Icon(Icons.redo, size: 20),
+                  icon: Icon(
+                    Icons.redo_rounded,
+                    size: 20,
+                    color: controller.canRedo
+                        ? (controller.isDarkMode
+                            ? Colors.white
+                            : Colors.black87)
+                        : (controller.isDarkMode
+                            ? Colors.white24
+                            : Colors.black26),
+                  ),
                   tooltip: 'Redo',
                   onPressed: controller.canRedo ? controller.redo : null,
                 ),
 
                 // Clear Page
                 IconButton(
-                  icon: const Icon(Icons.delete_outline, size: 20),
+                  icon: Icon(
+                    Icons.delete_outline,
+                    size: 20,
+                    color: controller.strokes.isNotEmpty
+                        ? (controller.isDarkMode
+                            ? Colors.white
+                            : Colors.black87)
+                        : (controller.isDarkMode
+                            ? Colors.white24
+                            : Colors.black26),
+                  ),
                   tooltip: 'Clear Page',
                   onPressed: controller.strokes.isNotEmpty
                       ? () => _showClearDialog(context)
@@ -560,13 +795,20 @@ class DrawingToolbar extends StatelessWidget {
       tooltip: 'Heading style',
       initialValue: currentHeading,
       onSelected: controller.setHeading,
+      color: controller.isDarkMode ? const Color(0xFF2C2C36) : Colors.white,
       padding: EdgeInsets.zero,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
-          color: Colors.grey.shade100,
+          color: controller.isDarkMode
+              ? const Color(0xFF2C2C36)
+              : Colors.grey.shade100,
           borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: Colors.grey.shade300),
+          border: Border.all(
+            color: controller.isDarkMode
+                ? const Color(0xFF444455)
+                : Colors.grey.shade300,
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -575,40 +817,61 @@ class DrawingToolbar extends StatelessWidget {
               currentHeading == HeadingLevel.none
                   ? 'Body'
                   : currentHeading.name.toUpperCase(),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.bold,
-                color: Colors.black87,
+                color: controller.isDarkMode ? Colors.white : Colors.black87,
               ),
             ),
-            const Icon(Icons.arrow_drop_down, size: 16),
+            Icon(
+              Icons.arrow_drop_down,
+              size: 16,
+              color: controller.isDarkMode ? Colors.white70 : Colors.black87,
+            ),
           ],
         ),
       ),
       itemBuilder: (context) => [
-        const PopupMenuItem(
+        PopupMenuItem(
           value: HeadingLevel.none,
-          child: Text('Body (Regular)'),
+          child: Text(
+            'Body (Regular)',
+            style: TextStyle(
+              color: controller.isDarkMode ? Colors.white : Colors.black87,
+            ),
+          ),
         ),
-        const PopupMenuItem(
+        PopupMenuItem(
           value: HeadingLevel.h1,
           child: Text(
             'H1 - Heading 1',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+              color: controller.isDarkMode ? Colors.white : Colors.black87,
+            ),
           ),
         ),
-        const PopupMenuItem(
+        PopupMenuItem(
           value: HeadingLevel.h2,
           child: Text(
             'H2 - Heading 2',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              color: controller.isDarkMode ? Colors.white : Colors.black87,
+            ),
           ),
         ),
-        const PopupMenuItem(
+        PopupMenuItem(
           value: HeadingLevel.h3,
           child: Text(
             'H3 - Heading 3',
-            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+              color: controller.isDarkMode ? Colors.white : Colors.black87,
+            ),
           ),
         ),
       ],
@@ -636,11 +899,17 @@ class DrawingToolbar extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: isActive
-                ? const Color(0xFF007AFF).withValues(alpha: 0.15)
+                ? (controller.isDarkMode
+                    ? const Color(0xFF007AFF).withValues(alpha: 0.35)
+                    : const Color(0xFF007AFF).withValues(alpha: 0.15))
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(6),
             border: Border.all(
-              color: isActive ? const Color(0xFF007AFF) : Colors.grey.shade300,
+              color: isActive
+                  ? const Color(0xFF007AFF)
+                  : (controller.isDarkMode
+                      ? const Color(0xFF444455)
+                      : Colors.grey.shade300),
               width: 1,
             ),
           ),
@@ -654,7 +923,13 @@ class DrawingToolbar extends StatelessWidget {
                 if (isUnderline) TextDecoration.underline,
                 if (isStrikethrough) TextDecoration.lineThrough,
               ]),
-              color: isActive ? const Color(0xFF007AFF) : Colors.black87,
+              color: isActive
+                  ? (controller.isDarkMode
+                      ? const Color(0xFF64B5F6)
+                      : const Color(0xFF007AFF))
+                  : (controller.isDarkMode
+                      ? Colors.white70
+                      : Colors.black87),
             ),
           ),
         ),
@@ -675,24 +950,36 @@ class DrawingToolbar extends StatelessWidget {
     return PopupMenuButton<Color>(
       tooltip: 'Font Color',
       onSelected: controller.setTextColor,
+      color: controller.isDarkMode ? const Color(0xFF2C2C36) : Colors.white,
       padding: EdgeInsets.zero,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
         decoration: BoxDecoration(
-          color: Colors.grey.shade100,
+          color: controller.isDarkMode
+              ? const Color(0xFF2C2C36)
+              : Colors.grey.shade100,
           borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: Colors.grey.shade300),
+          border: Border.all(
+            color: controller.isDarkMode
+                ? const Color(0xFF444455)
+                : Colors.grey.shade300,
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.format_color_text_rounded, size: 16, color: Colors.black87),
+            Icon(
+              Icons.format_color_text_rounded,
+              size: 16,
+              color: controller.isDarkMode ? Colors.white70 : Colors.black87,
+            ),
             const SizedBox(width: 4),
             Container(
               width: 10,
               height: 10,
               decoration: BoxDecoration(
-                color: controller.activeTextColor ?? Colors.black87,
+                color: controller.activeTextColor ??
+                    (controller.isDarkMode ? Colors.white : Colors.black87),
                 shape: BoxShape.circle,
               ),
             ),
@@ -714,7 +1001,10 @@ class DrawingToolbar extends StatelessWidget {
                 c == Colors.black
                     ? 'Black'
                     : '#${c.toARGB32().toRadixString(16).substring(2).toUpperCase()}',
-                style: const TextStyle(fontSize: 13),
+                style: TextStyle(
+                  fontSize: 13,
+                  color: controller.isDarkMode ? Colors.white : Colors.black87,
+                ),
               ),
             ],
           ),
@@ -736,15 +1026,26 @@ class DrawingToolbar extends StatelessWidget {
     return PopupMenuButton<Color?>(
       tooltip: 'Highlight Background',
       onSelected: controller.setTextHighlight,
+      color: controller.isDarkMode ? const Color(0xFF2C2C36) : Colors.white,
       padding: EdgeInsets.zero,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
         decoration: BoxDecoration(
-          color: Colors.grey.shade100,
+          color: controller.isDarkMode
+              ? const Color(0xFF2C2C36)
+              : Colors.grey.shade100,
           borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: Colors.grey.shade300),
+          border: Border.all(
+            color: controller.isDarkMode
+                ? const Color(0xFF444455)
+                : Colors.grey.shade300,
+          ),
         ),
-        child: const Icon(Icons.border_color_rounded, size: 16, color: Colors.black87),
+        child: Icon(
+          Icons.border_color_rounded,
+          size: 16,
+          color: controller.isDarkMode ? Colors.white70 : Colors.black87,
+        ),
       ),
       itemBuilder: (context) => highlights.map((c) {
         return PopupMenuItem<Color?>(
@@ -756,14 +1057,21 @@ class DrawingToolbar extends StatelessWidget {
                 height: 16,
                 decoration: BoxDecoration(
                   color: c ?? Colors.white,
-                  border: Border.all(color: Colors.grey.shade400),
+                  border: Border.all(
+                    color: controller.isDarkMode
+                        ? Colors.grey.shade600
+                        : Colors.grey.shade400,
+                  ),
                   shape: BoxShape.circle,
                 ),
               ),
               const SizedBox(width: 8),
               Text(
                 c == null ? 'None (Clear)' : 'Highlight',
-                style: const TextStyle(fontSize: 13),
+                style: TextStyle(
+                  fontSize: 13,
+                  color: controller.isDarkMode ? Colors.white : Colors.black87,
+                ),
               ),
             ],
           ),
@@ -777,29 +1085,48 @@ class DrawingToolbar extends StatelessWidget {
       key: const Key('insert_image_button'),
       tooltip: 'Insert or Paste Image',
       offset: const Offset(0, 36),
+      color: controller.isDarkMode ? const Color(0xFF2C2C36) : Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: Container(
         height: 32,
         padding: const EdgeInsets.symmetric(horizontal: 8),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: controller.isDarkMode
+              ? const Color(0xFF2C2C36)
+              : Colors.white,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.grey.shade300),
+          border: Border.all(
+            color: controller.isDarkMode
+                ? const Color(0xFF444455)
+                : Colors.grey.shade300,
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.add_photo_alternate_outlined, size: 16, color: Color(0xFF007AFF)),
+            Icon(
+              Icons.add_photo_alternate_outlined,
+              size: 16,
+              color: controller.isDarkMode
+                  ? const Color(0xFF64B5F6)
+                  : const Color(0xFF007AFF),
+            ),
             const SizedBox(width: 4),
-            const Text(
+            Text(
               'Image',
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFF007AFF),
+                color: controller.isDarkMode
+                    ? const Color(0xFF64B5F6)
+                    : const Color(0xFF007AFF),
               ),
             ),
-            const Icon(Icons.arrow_drop_down, size: 16, color: Colors.grey),
+            Icon(
+              Icons.arrow_drop_down,
+              size: 16,
+              color: controller.isDarkMode ? Colors.white70 : Colors.grey,
+            ),
           ],
         ),
       ),
@@ -809,7 +1136,9 @@ class DrawingToolbar extends StatelessWidget {
           if (!success && context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('No image found on clipboard to paste. Copy an image first!'),
+                content: Text(
+                  'No image found on clipboard to paste. Copy an image first!',
+                ),
                 duration: Duration(seconds: 2),
                 behavior: SnackBarBehavior.floating,
               ),
@@ -820,23 +1149,43 @@ class DrawingToolbar extends StatelessWidget {
         }
       },
       itemBuilder: (context) => [
-        const PopupMenuItem(
+        PopupMenuItem(
           value: 'clipboard',
           child: Row(
             children: [
-              Icon(Icons.content_paste_rounded, size: 18, color: Color(0xFF007AFF)),
-              SizedBox(width: 8),
-              Text('Paste from Clipboard (Ctrl+V)'),
+              Icon(
+                Icons.content_paste_rounded,
+                size: 18,
+                color: controller.isDarkMode
+                    ? const Color(0xFF64B5F6)
+                    : const Color(0xFF007AFF),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Paste from Clipboard (Ctrl+V)',
+                style: TextStyle(
+                  color: controller.isDarkMode ? Colors.white : Colors.black87,
+                ),
+              ),
             ],
           ),
         ),
-        const PopupMenuItem(
+        PopupMenuItem(
           value: 'device',
           child: Row(
             children: [
-              Icon(Icons.upload_file_rounded, size: 18, color: Colors.black87),
-              SizedBox(width: 8),
-              Text('Upload Image File...'),
+              Icon(
+                Icons.upload_file_rounded,
+                size: 18,
+                color: controller.isDarkMode ? Colors.white70 : Colors.black87,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Upload Image File...',
+                style: TextStyle(
+                  color: controller.isDarkMode ? Colors.white : Colors.black87,
+                ),
+              ),
             ],
           ),
         ),

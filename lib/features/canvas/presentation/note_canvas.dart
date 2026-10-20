@@ -614,9 +614,15 @@ class _NoteCanvasState extends State<NoteCanvas>
                     builder: (context, _) {
                       final isPanTool = widget.controller.activeTool == ToolType.pan;
 
+                      final isDark = widget.controller.isDarkMode;
+
                       return MouseRegion(
                         cursor: _currentCursor,
-                        child: Stack(
+                        child: Container(
+                          color: isDark
+                              ? AppColors.pasteboardBackgroundDark
+                              : AppColors.pasteboardBackground,
+                          child: Stack(
                       children: [
                         // Full-viewport gesture listener with matrix inversion (never clips or dead-zones)
                         Listener(
@@ -1031,11 +1037,12 @@ class _NoteCanvasState extends State<NoteCanvas>
                   ),
                 ],
               ),
-            );
-            },
+            ),
           );
         },
-      ),
+      );
+    },
+  ),
             ),
           ),
         ),
@@ -1044,20 +1051,23 @@ class _NoteCanvasState extends State<NoteCanvas>
   }
 
   Widget _buildAddPageButton() {
+    final isDark = widget.controller.isDarkMode;
     return SizedBox(
       width: AppConstants.defaultPageSize.width,
       child: OutlinedButton.icon(
         style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.primary,
+          foregroundColor: isDark ? Colors.white : AppColors.primary,
           side: BorderSide(
-            color: AppColors.primary.withValues(alpha: 0.6),
+            color: isDark
+                ? Colors.white24
+                : AppColors.primary.withValues(alpha: 0.6),
             width: 1.5,
           ),
           padding: const EdgeInsets.symmetric(vertical: 14.0),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8.0),
           ),
-          backgroundColor: Colors.white,
+          backgroundColor: isDark ? const Color(0xFF22222A) : Colors.white,
           elevation: 1,
         ),
         icon: const Icon(Icons.add_circle_outline_rounded, size: 20),
@@ -1078,6 +1088,7 @@ class _NoteCanvasState extends State<NoteCanvas>
   Widget _buildPageSheet(int pageIndex) {
     final page = widget.controller.pages[pageIndex];
     final isActivePage = widget.controller.activePageIndex == pageIndex;
+    final isDark = widget.controller.isDarkMode;
 
     final renderedStrokes = isActivePage && widget.controller.isTransforming
         ? page.strokes
@@ -1127,7 +1138,9 @@ class _NoteCanvasState extends State<NoteCanvas>
                         child: Icon(
                           Icons.delete_outline_rounded,
                           size: 18,
-                          color: Colors.grey.shade600,
+                          color: isDark
+                              ? Colors.grey.shade400
+                              : Colors.grey.shade600,
                         ),
                       ),
                     ),
@@ -1142,19 +1155,25 @@ class _NoteCanvasState extends State<NoteCanvas>
           width: AppConstants.defaultPageSize.width,
           height: AppConstants.defaultPageSize.height,
           decoration: BoxDecoration(
-            color: AppColors.canvasBackground,
+            color: isDark
+                ? AppColors.canvasBackgroundDark
+                : AppColors.canvasBackground,
             borderRadius: BorderRadius.circular(2.0),
             border: Border.all(
               color: isActivePage
-                  ? AppColors.primary.withValues(alpha: 0.6)
-                  : AppColors.canvasBorder,
+                  ? AppColors.primary.withValues(alpha: isDark ? 0.85 : 0.6)
+                  : (isDark
+                      ? AppColors.canvasBorderDark
+                      : AppColors.canvasBorder),
               width: isActivePage ? 1.5 : 1,
             ),
             boxShadow: [
               BoxShadow(
                 color: isActivePage
-                    ? AppColors.primary.withValues(alpha: 0.12)
-                    : AppColors.canvasShadow,
+                    ? AppColors.primary.withValues(alpha: isDark ? 0.25 : 0.12)
+                    : (isDark
+                        ? AppColors.canvasShadowDark
+                        : AppColors.canvasShadow),
                 blurRadius: 10.0,
                 spreadRadius: 2.0,
                 offset: const Offset(0, 4),
@@ -1171,6 +1190,7 @@ class _NoteCanvasState extends State<NoteCanvas>
                   child: CustomPaint(
                     painter: PageBackgroundPainter(
                       template: widget.template,
+                      isDarkMode: isDark,
                     ),
                   ),
                 ),
@@ -1214,6 +1234,7 @@ class _NoteCanvasState extends State<NoteCanvas>
                       painter: CompletedStrokesPainter(
                         renderedStrokes,
                         layer: StrokeLayer.highlightersOnly,
+                        isDarkMode: isDark,
                       ),
                     ),
                   ),
@@ -1237,6 +1258,7 @@ class _NoteCanvasState extends State<NoteCanvas>
                               color: widget.controller.activeColor,
                               strokeWidth: widget.controller.strokeWidth,
                               toolType: widget.controller.activeTool,
+                              isDarkMode: isDark,
                             ),
                           ),
                         );
@@ -1251,6 +1273,7 @@ class _NoteCanvasState extends State<NoteCanvas>
                       painter: CompletedStrokesPainter(
                         renderedStrokes,
                         layer: StrokeLayer.pensOnly,
+                        isDarkMode: isDark,
                       ),
                     ),
                   ),
@@ -1274,6 +1297,7 @@ class _NoteCanvasState extends State<NoteCanvas>
                               color: widget.controller.activeColor,
                               strokeWidth: widget.controller.strokeWidth,
                               toolType: widget.controller.activeTool,
+                              isDarkMode: isDark,
                             ),
                           ),
                         );
@@ -1329,6 +1353,7 @@ class _NoteCanvasState extends State<NoteCanvas>
               child: CustomPaint(
                 painter: CompletedStrokesPainter(
                   widget.controller.selectedStrokes,
+                  isDarkMode: widget.controller.isDarkMode,
                 ),
               ),
             ),

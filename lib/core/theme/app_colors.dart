@@ -7,12 +7,24 @@ class AppColors {
   static const Color primaryDark = Color(0xFF8E09A8);
   static const Color primaryLight = Color(0xFFEA80FC);
 
+  // Light Mode Canvas
   static const Color canvasBackground = Colors.white;
   static const Color canvasBorder = Color(0xFFE0E0E0);
   static const Color canvasShadow = Color(0x1F000000);
+  static const Color pasteboardBackground = Color(0xFFF3F3F5);
 
   static const Color ruledLine = Color(0xFFE1F5FE);
   static const Color gridLine = Color(0xFFEEEEEE);
+
+  // Dark Mode Canvas
+  static const Color canvasBackgroundDark = Color(0xFF1E1E24);
+  static const Color canvasBorderDark = Color(0xFF33333E);
+  static const Color canvasShadowDark = Color(0x66000000);
+  static const Color pasteboardBackgroundDark = Color(0xFF121215);
+
+  static const Color ruledLineDark = Color(0xFF2C2C38);
+  static const Color gridLineDark = Color(0xFF282834);
+  static const Color toolbarDark = Color(0xFF22222A);
 
   // Pen presets
   static const List<Color> penPalette = [

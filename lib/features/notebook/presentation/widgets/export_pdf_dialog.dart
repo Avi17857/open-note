@@ -96,7 +96,7 @@ class _ExportPdfDialogState extends State<ExportPdfDialog> {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 460),
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -113,10 +113,10 @@ class _ExportPdfDialogState extends State<ExportPdfDialog> {
                     child: const Icon(
                       Icons.picture_as_pdf_rounded,
                       color: AppColors.primary,
-                      size: 26,
+                      size: 24,
                     ),
                   ),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -124,14 +124,14 @@ class _ExportPdfDialogState extends State<ExportPdfDialog> {
                         const Text(
                           'Export Note as PDF',
                           style: TextStyle(
-                            fontSize: 18,
+                            fontSize: 17,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                         Text(
                           '$title • $pageCount ${pageCount == 1 ? 'Page' : 'Pages'}',
                           style: TextStyle(
-                            fontSize: 13,
+                            fontSize: 12,
                             color: Colors.grey.shade600,
                           ),
                           maxLines: 1,
@@ -143,7 +143,7 @@ class _ExportPdfDialogState extends State<ExportPdfDialog> {
                 ],
               ),
 
-              const SizedBox(height: 20),
+              const SizedBox(height: 14),
 
               // Export Mode Title
               const Text(
@@ -154,7 +154,7 @@ class _ExportPdfDialogState extends State<ExportPdfDialog> {
                   color: Colors.black87,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
 
               // Mode 1: Inbound Page Bounds
               _ModeSelectionTile(
@@ -168,7 +168,7 @@ class _ExportPdfDialogState extends State<ExportPdfDialog> {
                 },
               ),
 
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
 
               // Mode 2: Infinite Canvas (Shrink to Fit)
               _ModeSelectionTile(
@@ -182,7 +182,7 @@ class _ExportPdfDialogState extends State<ExportPdfDialog> {
                 },
               ),
 
-              const SizedBox(height: 18),
+              const SizedBox(height: 14),
 
               // Background Template
               const Text(
@@ -193,7 +193,7 @@ class _ExportPdfDialogState extends State<ExportPdfDialog> {
                   color: Colors.black87,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
 
               SegmentedButton<PageTemplate>(
                 segments: const [
@@ -219,7 +219,35 @@ class _ExportPdfDialogState extends State<ExportPdfDialog> {
                 },
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 12),
+
+              // Light-Mode Guarantee Notice
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.print_outlined, size: 16, color: Colors.blue.shade700),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Light-Mode Guarantee: Exports on clean white paper with black ink for printing.',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.blue.shade900,
+                          height: 1.2,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 16),
 
               // Actions
               Row(

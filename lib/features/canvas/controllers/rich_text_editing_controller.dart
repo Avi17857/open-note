@@ -46,6 +46,15 @@ class RichTextEditingController extends TextEditingController {
 
   List<RichTextSpan> get spans => List.unmodifiable(_spans);
 
+  bool _isDarkMode = false;
+  bool get isDarkMode => _isDarkMode;
+  set isDarkMode(bool val) {
+    if (_isDarkMode != val) {
+      _isDarkMode = val;
+      notifyListeners();
+    }
+  }
+
   set spans(List<RichTextSpan> newSpans) {
     _spans = List.from(newSpans);
     notifyListeners();
@@ -337,7 +346,7 @@ class RichTextEditingController extends TextEditingController {
 
       children.add(TextSpan(
         text: segText,
-        style: sliceSpan.toTextStyle(baseStyle: style),
+        style: sliceSpan.toTextStyle(baseStyle: style, isDarkMode: _isDarkMode),
       ));
     }
 

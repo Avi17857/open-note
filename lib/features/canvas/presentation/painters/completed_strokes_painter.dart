@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:open_note/features/canvas/controllers/canvas_controller.dart';
 import 'package:open_note/features/canvas/models/stroke.dart';
 import 'package:open_note/features/canvas/models/tool_type.dart';
 import 'package:open_note/features/canvas/services/stroke_renderer.dart';
@@ -12,8 +13,13 @@ enum StrokeLayer {
 class CompletedStrokesPainter extends CustomPainter {
   final List<Stroke> strokes;
   final StrokeLayer layer;
+  final bool isDarkMode;
 
-  CompletedStrokesPainter(this.strokes, {this.layer = StrokeLayer.all});
+  CompletedStrokesPainter(
+    this.strokes, {
+    this.layer = StrokeLayer.all,
+    this.isDarkMode = false,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -46,10 +52,15 @@ class CompletedStrokesPainter extends CustomPainter {
   }
 
   void _drawStroke(Canvas canvas, Stroke stroke) {
+    final effectiveColor =
+        isDarkMode && CanvasController.isNearBlack(stroke.color)
+            ? Colors.white
+            : stroke.color;
+
     StrokeRenderer.drawStroke(
       canvas: canvas,
       points: stroke.points,
-      color: stroke.color,
+      color: effectiveColor,
       strokeWidth: stroke.strokeWidth,
       toolType: stroke.toolType,
     );
@@ -59,6 +70,7 @@ class CompletedStrokesPainter extends CustomPainter {
   bool shouldRepaint(covariant CompletedStrokesPainter oldDelegate) {
     return oldDelegate.strokes != strokes ||
         oldDelegate.strokes.length != strokes.length ||
-        oldDelegate.layer != layer;
+        oldDelegate.layer != layer ||
+        oldDelegate.isDarkMode != isDarkMode;
   }
 }

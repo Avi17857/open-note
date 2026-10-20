@@ -95,7 +95,7 @@ class RichTextSpan {
   }
 
   /// Combines span attributes into a Flutter [TextStyle].
-  TextStyle toTextStyle({TextStyle? baseStyle}) {
+  TextStyle toTextStyle({TextStyle? baseStyle, bool isDarkMode = false}) {
     final effectiveBase = baseStyle ?? const TextStyle();
 
     final TextDecoration decoration = TextDecoration.combine([
@@ -117,12 +117,20 @@ class RichTextSpan {
       effectiveFontSize = heading.defaultFontSize;
     }
 
+    Color? effectiveColor = color ?? effectiveBase.color;
+    if (isDarkMode && effectiveColor != null && effectiveColor.a >= 0.5) {
+      final hsv = HSVColor.fromColor(effectiveColor);
+      if (hsv.value < 0.25 && hsv.saturation < 0.25) {
+        effectiveColor = Colors.white;
+      }
+    }
+
     return effectiveBase.copyWith(
       fontWeight: effectiveWeight,
       fontStyle: italic ? FontStyle.italic : FontStyle.normal,
       decoration: decoration == TextDecoration.none ? null : decoration,
       fontSize: effectiveFontSize,
-      color: color ?? effectiveBase.color,
+      color: effectiveColor,
       backgroundColor: highlightColor ?? effectiveBase.backgroundColor,
     );
   }

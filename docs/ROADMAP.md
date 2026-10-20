@@ -71,10 +71,10 @@ OpenNote bridges the gap between the fluid inking experience of **Samsung Notes*
   - Blank / Plain
   - Ruled / Lined (custom line spacing)
   - Grid / Graph paper
-- [ ] **Smart Dark Mode (with Invertible Inking & Light-Mode Export):**
-  - Full dark theme: note page background turns dark (`#1A1A1A`), with subtle low-contrast ruled and grid lines (`#333333`).
+- [x] **Smart Dark Mode (with Invertible Inking & Light-Mode Export):**
+  - Full dark theme: note page background turns dark (`#1E1E24`), with subtle low-contrast ruled and grid lines (`#2C2C38` / `#282834`). Pasteboard outside pages turns to deep midnight slate (`#121215`).
   - Smart ink inversion: black/near-black strokes and default text dynamically invert to white/light on-screen for high contrast, while colored pens and highlighters preserve their hue.
-  - Light-Mode Export Guarantee: PDF export automatically exports notes on clean white paper in standard light mode (or user-selectable), preserving ink and print readability.
+  - Light-Mode Export Guarantee: PDF export automatically exports notes on clean white paper in standard light mode, preserving ink and print readability.
 - [ ] **Canvas Modes:**
   - Standard Paged Mode (fixed A4/Letter dimensions with vertical page-scrolling and page headers).
   - Infinite Canvas Mode for pages (continuous 2D pan/zoom, unbounded grid expansion, and no page breaks).

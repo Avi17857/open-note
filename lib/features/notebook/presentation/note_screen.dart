@@ -50,13 +50,16 @@ class _NoteScreenState extends State<NoteScreen> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: _notebookController,
+      listenable: Listenable.merge([_notebookController, _canvasController]),
       builder: (context, _) {
         final totalPages = _notebookController.currentNote.pages.length;
+        final isDark = _canvasController.isDarkMode;
 
         return Scaffold(
           resizeToAvoidBottomInset: false,
-          backgroundColor: const Color(0xFFF3F3F5),
+          backgroundColor: isDark
+              ? AppColors.pasteboardBackgroundDark
+              : const Color(0xFFF3F3F5),
           appBar: AppBar(
             backgroundColor: AppColors.primary,
             iconTheme: const IconThemeData(color: Colors.white),
@@ -151,6 +154,20 @@ class _NoteScreenState extends State<NoteScreen> {
                     ),
                   ),
                 ],
+              ),
+
+              // Dark Mode Toggle
+              IconButton(
+                icon: Icon(
+                  _canvasController.isDarkMode
+                      ? Icons.dark_mode
+                      : Icons.light_mode_outlined,
+                  color: Colors.white,
+                ),
+                tooltip: _canvasController.isDarkMode
+                    ? 'Switch to Light Mode'
+                    : 'Switch to Dark Mode',
+                onPressed: _canvasController.toggleDarkMode,
               ),
 
               // Export Note as PDF

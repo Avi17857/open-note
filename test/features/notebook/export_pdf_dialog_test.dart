@@ -63,6 +63,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Tap Cancel
+    await tester.ensureVisible(find.text('Cancel'));
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
 

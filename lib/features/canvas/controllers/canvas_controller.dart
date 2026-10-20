@@ -340,6 +340,37 @@ class CanvasController extends ChangeNotifier {
     return null;
   }
 
+  bool _isDarkMode = false;
+  bool get isDarkMode => _isDarkMode;
+
+  void toggleDarkMode() {
+    _isDarkMode = !_isDarkMode;
+    notifyListeners();
+  }
+
+  void setDarkMode(bool value) {
+    if (_isDarkMode == value) return;
+    _isDarkMode = value;
+    notifyListeners();
+  }
+
+  /// Returns true if a color is black or very near-black (e.g. #000000, #111111, #212121).
+  /// Excludes highlighters and chromatic colors (e.g. purple, blue, red) by checking saturation.
+  static bool isNearBlack(Color color) {
+    if (color.a < 0.5) return false;
+    final hsv = HSVColor.fromColor(color);
+    return hsv.value < 0.25 && hsv.saturation < 0.25;
+  }
+
+  /// Returns the display color of a stroke on screen, dynamically converting black ink
+  /// to crisp white on dark paper while preserving original color data.
+  Color getDisplayStrokeColor(Color color) {
+    if (_isDarkMode && isNearBlack(color)) {
+      return Colors.white;
+    }
+    return color;
+  }
+
   List<Color> get customColors => List.unmodifiable(_customColors);
   ToolType get activeTool => _activeTool;
   Color get activeColor =>

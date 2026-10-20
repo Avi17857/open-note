@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:open_note/features/canvas/controllers/canvas_controller.dart';
 import 'package:open_note/features/canvas/models/tool_type.dart';
+import 'package:open_note/features/canvas/presentation/widgets/tool_icon.dart';
 
 class EraserRadiusPicker extends StatelessWidget {
   final CanvasController controller;
@@ -55,16 +56,43 @@ class EraserRadiusPicker extends StatelessWidget {
 
               // Eraser Type Selector (Area vs Stroke)
               SegmentedButton<ToolType>(
-                segments: const [
+                style: SegmentedButton.styleFrom(
+                  backgroundColor: controller.isDarkMode
+                      ? const Color(0xFF2C2C36)
+                      : Colors.grey.shade100,
+                  foregroundColor: controller.isDarkMode
+                      ? Colors.white70
+                      : Colors.black87,
+                  selectedForegroundColor: Colors.white,
+                  selectedBackgroundColor: isArea
+                      ? Colors.orange.shade800
+                      : Colors.red.shade800,
+                  side: BorderSide(
+                    color: controller.isDarkMode
+                        ? const Color(0xFF444455)
+                        : Colors.grey.shade300,
+                  ),
+                ),
+                segments: [
                   ButtonSegment<ToolType>(
                     value: ToolType.areaEraser,
-                    icon: Icon(Icons.cleaning_services, size: 18),
-                    label: Text('Area (Precision)'),
+                    icon: ToolIcon(
+                      tool: ToolType.areaEraser,
+                      size: 20,
+                      isSelected: isArea,
+                      isDarkMode: controller.isDarkMode,
+                    ),
+                    label: const Text('Area (Precision)'),
                   ),
                   ButtonSegment<ToolType>(
                     value: ToolType.strokeEraser,
-                    icon: Icon(Icons.auto_fix_normal, size: 18),
-                    label: Text('Stroke (Whole Line)'),
+                    icon: ToolIcon(
+                      tool: ToolType.strokeEraser,
+                      size: 20,
+                      isSelected: !isArea,
+                      isDarkMode: controller.isDarkMode,
+                    ),
+                    label: const Text('Stroke (Whole Line)'),
                   ),
                 ],
                 selected: {
