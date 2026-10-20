@@ -14,6 +14,7 @@ dependencies:
   path_provider: ^2.1.5
   pdf: ^3.11.3
   printing: ^5.14.3
+  shared_preferences: ^2.5.3
   super_clipboard: ^0.9.1
 
 dev_dependencies:

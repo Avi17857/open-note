@@ -61,17 +61,23 @@ OpenNote bridges the gap between the fluid inking experience of **Samsung Notes*
   - `T` (Text) tool on main toolbar: tap canvas to spawn a new text box.
   - Borderless editing with subtle drag-handles to move and resize anywhere on the page.
   - Native soft-keyboard and Samsung S-Pen handwriting-to-text integration.
+- [ ] **Arbitrary Font Sizing:**
+  - Font size picker / stepper in formatting toolbar (10, 12, 14, 16, 18, 20, 24, 28, 32, 48 pt, etc.) to set fine-grained font sizes on selected text spans.
 
 ---
 
-## Milestone 4: Page Templates & Canvas Sizing
+## Milestone 4: Page Templates, Dark Mode & Canvas Modes
 - [x] **Paper Backgrounds:**
   - Blank / Plain
   - Ruled / Lined (custom line spacing)
   - Grid / Graph paper
+- [ ] **Smart Dark Mode (with Invertible Inking & Light-Mode Export):**
+  - Full dark theme: note page background turns dark (`#1A1A1A`), with subtle low-contrast ruled and grid lines (`#333333`).
+  - Smart ink inversion: black/near-black strokes and default text dynamically invert to white/light on-screen for high contrast, while colored pens and highlighters preserve their hue.
+  - Light-Mode Export Guarantee: PDF export automatically exports notes on clean white paper in standard light mode (or user-selectable), preserving ink and print readability.
 - [ ] **Canvas Modes:**
-  - Standard Paged Mode (fixed A4/Letter dimensions with vertical page-scrolling).
-  - Infinite Canvas Mode (panning and two-finger pinch-to-zoom).
+  - Standard Paged Mode (fixed A4/Letter dimensions with vertical page-scrolling and page headers).
+  - Infinite Canvas Mode for pages (continuous 2D pan/zoom, unbounded grid expansion, and no page breaks).
 - [x] **Canvas Navigation & Orientation:**
   - OneNote-style top boundary anchor ($y \le 40\text{px}$) preventing endless scrolling into void space above Page 1.
   - Horizontal pasteboard buffer ($450\text{px}$) keeping notes anchored without wandering off-screen.
@@ -80,33 +86,49 @@ OpenNote bridges the gap between the fluid inking experience of **Samsung Notes*
 
 ---
 
-## Milestone 5: OneNote Hierarchy & Navigation
+## Milestone 5: OneNote Hierarchy, Tabs & Page Manager
 - [ ] **Hierarchy Structure:**
   - `Notebook` contains multiple `Section`s.
-  - `Section` contains multiple `NotePage`s.
-- [ ] **OneNote-Style Navigation:**
-  - Collapsible navigation drawer showing Notebooks and Sections.
-  - Vertical tab / page list sidebar for switching pages rapidly.
-  - Add, rename, reorder, and delete pages/sections.
+  - `Section` contains multiple `NoteDocument`s / Notes.
+  - Note creation options: choose between **Standard Paged Note** or **Infinite Canvas Note**.
+- [ ] **OneNote-Style Navigation & Top Tabs:**
+  - Horizontal tab bar at the top of the canvas for rapid switching between open notes/sections.
+  - Collapsible navigation drawer showing the complete Notebook tree.
+  - Add, rename, reorder, and delete notebooks, sections, and notes.
+- [ ] **Page Sorter & Reorganizer (Paged Mode):**
+  - Visual grid overview displaying thumbnail previews of all pages in the note.
+  - Drag-and-drop to reorder pages.
+  - Duplicate, delete, and insert blank pages anywhere in the sequence.
+  - One-tap visual page jumping.
 
 ---
 
-## Milestone 6: STEM Tools & Mixed Media
+## Milestone 6: Document Import, STEM Tools & Mixed Media
+- [ ] **Document Import (PDF & PowerPoint / PPTX):**
+  - Import multi-page PDF documents and PPTX slide decks directly into a note.
+  - Single-Page Mode: each PDF page or slide becomes a background note page with full pen/highlighter/text annotation on top, with the option to append or insert blank pages.
+  - Canvas Mode: import all slides/pages onto an open 2D canvas with flexible layout.
 - [ ] **LaTeX Equations:** Inline math formula chips rendered via `WidgetSpan`.
 - [ ] **Syntax-Highlighted Code Blocks:** Formatted blocks with language highlighting and copy button.
 - [ ] **Collapsible Study Toggles:** Active-recall question/answer toggles for students.
-- [ ] **Image Insertion:** Insert images, reposition, and annotate with pen.
-- [ ] **PDF Annotation:** Import multi-page PDF documents as background pages and annotate with pen.
 
 ---
 
-## Milestone 7: Storage, Export & Sync
-- [x] **Robust File Format:** Structured JSON format storing vector stroke coordinates, attributed text spans, and base64 embedded images.
-- [x] **Auto-Save & Background Flushing:** Debounced background saves so drawing never drops frames.
+## Milestone 7: Storage, Export & Cloud Sync
+- [x] **Robust File Format:** Structured JSON format (`.opennote`) storing vector stroke coordinates, attributed text spans, and base64 embedded images.
+- [x] **Local-First Storage & Persistence:**
+  - [x] Automatic note library scanning: on application launch, automatically load all saved `.opennote` documents from the device's local notes directory into the notebook navigation drawer.
+  - [x] Debounced Auto-Save: automatically saves modified notes to local disk storage ~1.2s after user stops drawing/typing without frame drops.
+  - [x] Web Local Storage Persistence: persist notes across browser reloads using local browser storage (`SharedPreferences`).
+  - [x] External File Export & Import (`.opennote` / JSON): allow users to explicitly export/save a note file anywhere on their local computer (Documents, Desktop, USB) and import any `.opennote` file via file picker.
 - [x] **PDF Document Export:**
   - Standard Inbound Page Bounds mode (1:1 scale matching note page dimensions).
   - Infinite Canvas / Pasteboard mode (shrink-to-fit: computes content bounding box and scales down proportionally to fit the entire canvas on the page).
   - High-fidelity vector stroke rendering: ballpoint pens, pressure-responsive fountain pen ribbons, and translucent highlighters.
   - Multi-layer composite: paper background (blank, ruled lines, grid), raster images, inking strokes over images, and rich text formatting (headings, colors, highlights, LTR/RTL).
   - Cross-platform sharing / download dialog via `Printing.sharePdf`.
-- [ ] **Vector & Raster Exports:** Export to PNG and vector SVG.
+- [ ] **Vector & Raster Exports:** Export to PNG image and vector SVG.
+- [ ] **Cloud Synchronization Architecture (Future Account Sync):**
+  - Repository / Provider abstraction (`NoteRepository`) separating local disk operations from remote cloud sync.
+  - Cloud-ready metadata: UUIDs, `updatedAt` timestamps, document versioning, and soft-delete tombstones for conflict resolution.
+  - User account cloud backup & multi-device sync (e.g. Supabase, Firebase, or custom backend).

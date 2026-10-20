@@ -108,6 +108,14 @@ class CanvasController extends ChangeNotifier {
   List<NotePage> get pages => List.unmodifiable(_pages);
   int get activePageIndex => _activePageIndex;
 
+  int _contentVersion = 0;
+  /// Incremented whenever canvas content (strokes, text, images, pages) is modified.
+  int get contentVersion => _contentVersion;
+
+  void markContentChanged() {
+    _contentVersion++;
+  }
+
   void setActivePage(int index) {
     if (index < 0 || index >= _pages.length) return;
     if (_activePageIndex == index) return;
@@ -186,6 +194,7 @@ class CanvasController extends ChangeNotifier {
   }
 
   void _onRichTextControllerChanged() {
+    _contentVersion++;
     notifyListeners();
   }
 
@@ -1773,6 +1782,7 @@ class CanvasController extends ChangeNotifier {
       pages: _pages.map((p) => p.clone()).toList(),
       activePageIndex: _activePageIndex,
     ));
+    _contentVersion++;
     final prev = _undoStack.removeLast();
     _pages = prev.pages.map((p) => p.clone()).toList();
     _activePageIndex = prev.activePageIndex.clamp(0, _pages.length - 1);
@@ -1788,6 +1798,7 @@ class CanvasController extends ChangeNotifier {
       pages: _pages.map((p) => p.clone()).toList(),
       activePageIndex: _activePageIndex,
     ));
+    _contentVersion++;
     final next = _redoStack.removeLast();
     _pages = next.pages.map((p) => p.clone()).toList();
     _activePageIndex = next.activePageIndex.clamp(0, _pages.length - 1);
@@ -1820,6 +1831,7 @@ class CanvasController extends ChangeNotifier {
             textBoxSnapshot.map((b) => b.copyWith()).toList();
       }
     }
+    _contentVersion++;
     _undoStack.add(CanvasHistorySnapshot(
       pages: clonedPages,
       activePageIndex: _activePageIndex,
@@ -1830,6 +1842,7 @@ class CanvasController extends ChangeNotifier {
   }
 
   void _recordHistory() {
+    _contentVersion++;
     _undoStack.add(CanvasHistorySnapshot(
       pages: _pages.map((p) => p.clone()).toList(),
       activePageIndex: _activePageIndex,

@@ -60,22 +60,30 @@ class _NoteScreenState extends State<NoteScreen> {
           appBar: AppBar(
             backgroundColor: AppColors.primary,
             iconTheme: const IconThemeData(color: Colors.white),
-            title: SizedBox(
-              width: 220,
-              child: TextField(
-                controller: _titleController,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
+            title: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 180),
+                  child: TextField(
+                    controller: _titleController,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                    ),
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      hintText: 'Note Title',
+                      hintStyle: TextStyle(color: Colors.white70),
+                    ),
+                    onChanged: (val) => _notebookController.updateNoteTitle(val),
+                    onSubmitted: (val) => _notebookController.updateNoteTitle(val),
+                  ),
                 ),
-                decoration: const InputDecoration(
-                  border: InputBorder.none,
-                  hintText: 'Note Title',
-                  hintStyle: TextStyle(color: Colors.white70),
-                ),
-                onSubmitted: (val) => _notebookController.updateNoteTitle(val),
-              ),
+                const SizedBox(width: 8),
+                _buildSaveStatusIndicator(_notebookController.saveStatus),
+              ],
             ),
             actions: [
               // Page Count badge & Add Page button
@@ -185,5 +193,50 @@ class _NoteScreenState extends State<NoteScreen> {
         );
       },
     );
+  }
+
+  Widget _buildSaveStatusIndicator(SaveStatus status) {
+    return switch (status) {
+      SaveStatus.saving => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            SizedBox(
+              width: 12,
+              height: 12,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white70,
+              ),
+            ),
+            SizedBox(width: 5),
+            Text(
+              'Saving...',
+              style: TextStyle(color: Colors.white70, fontSize: 11),
+            ),
+          ],
+        ),
+      SaveStatus.saved => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.cloud_done_outlined, size: 14, color: Colors.white70),
+            SizedBox(width: 4),
+            Text(
+              'Saved',
+              style: TextStyle(color: Colors.white70, fontSize: 11),
+            ),
+          ],
+        ),
+      SaveStatus.hasUnsavedChanges => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.edit_note, size: 14, color: Colors.white70),
+            SizedBox(width: 4),
+            Text(
+              'Unsaved',
+              style: TextStyle(color: Colors.white70, fontSize: 11),
+            ),
+          ],
+        ),
+    };
   }
 }
