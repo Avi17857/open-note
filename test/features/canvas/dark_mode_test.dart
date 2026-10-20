@@ -120,6 +120,22 @@ void main() {
       const baseDark = TextStyle(color: Colors.white);
       final darkDefaultStyle = spanDefault.toTextStyle(baseStyle: baseDark, isDarkMode: true);
       expect(darkDefaultStyle.color, equals(Colors.white));
+
+      // Underline and strikethrough decorationColor verification
+      const spanUnderline = RichTextSpan(start: 0, end: 5, underline: true);
+      const spanStrike = RichTextSpan(start: 0, end: 5, strikethrough: true, color: Colors.blue);
+
+      final lightUnderlineStyle = spanUnderline.toTextStyle(isDarkMode: false);
+      expect(lightUnderlineStyle.decoration, equals(TextDecoration.underline));
+      expect(lightUnderlineStyle.decorationColor, equals(Colors.black87));
+
+      final darkUnderlineStyle = spanUnderline.toTextStyle(isDarkMode: true);
+      expect(darkUnderlineStyle.decoration, equals(TextDecoration.underline));
+      expect(darkUnderlineStyle.decorationColor, equals(Colors.white));
+
+      final darkStrikeStyle = spanStrike.toTextStyle(isDarkMode: true);
+      expect(darkStrikeStyle.decoration, equals(TextDecoration.lineThrough));
+      expect(darkStrikeStyle.decorationColor, equals(Colors.blue));
     });
 
     testWidgets('NoteCanvas updates theme background when dark mode toggles', (tester) async {

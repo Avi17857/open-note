@@ -118,17 +118,26 @@ class RichTextSpan {
     }
 
     Color? effectiveColor = color ?? effectiveBase.color;
-    if (isDarkMode && effectiveColor != null && effectiveColor.a >= 0.5) {
-      final hsv = HSVColor.fromColor(effectiveColor);
-      if (hsv.value < 0.25 && hsv.saturation < 0.25) {
-        effectiveColor = Colors.white;
+    if (isDarkMode) {
+      if (effectiveColor != null && effectiveColor.a >= 0.5) {
+        final hsv = HSVColor.fromColor(effectiveColor);
+        if (hsv.value < 0.25 && hsv.saturation < 0.25) {
+          effectiveColor = Colors.white;
+        }
+      } else {
+        effectiveColor ??= Colors.white;
       }
     }
+
+    final Color? effectiveDecorationColor = decoration == TextDecoration.none
+        ? null
+        : (effectiveColor ?? (isDarkMode ? Colors.white : Colors.black87));
 
     return effectiveBase.copyWith(
       fontWeight: effectiveWeight,
       fontStyle: italic ? FontStyle.italic : FontStyle.normal,
       decoration: decoration == TextDecoration.none ? null : decoration,
+      decorationColor: effectiveDecorationColor,
       fontSize: effectiveFontSize,
       color: effectiveColor,
       backgroundColor: highlightColor ?? effectiveBase.backgroundColor,

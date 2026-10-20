@@ -167,6 +167,7 @@ class _TextBoxWidgetState extends State<TextBoxWidget> {
                       style: TextStyle(
                         fontSize: 15.0,
                         color: isDark ? Colors.white : Colors.black87,
+                        decorationColor: isDark ? Colors.white : Colors.black87,
                         height: 1.4,
                       ),
                       decoration: const InputDecoration(

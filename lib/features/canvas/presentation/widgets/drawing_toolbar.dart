@@ -913,25 +913,29 @@ class DrawingToolbar extends StatelessWidget {
               width: 1,
             ),
           ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: isBold ? FontWeight.bold : FontWeight.w600,
-              fontStyle: isItalic ? FontStyle.italic : FontStyle.normal,
-              decoration: TextDecoration.combine([
-                if (isUnderline) TextDecoration.underline,
-                if (isStrikethrough) TextDecoration.lineThrough,
-              ]),
-              color: isActive
-                  ? (controller.isDarkMode
-                      ? const Color(0xFF64B5F6)
-                      : const Color(0xFF007AFF))
-                  : (controller.isDarkMode
-                      ? Colors.white70
-                      : Colors.black87),
-            ),
-          ),
+          child: Builder(builder: (context) {
+            final textColor = isActive
+                ? (controller.isDarkMode
+                    ? const Color(0xFF64B5F6)
+                    : const Color(0xFF007AFF))
+                : (controller.isDarkMode
+                    ? Colors.white70
+                    : Colors.black87);
+            return Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: isBold ? FontWeight.bold : FontWeight.w600,
+                fontStyle: isItalic ? FontStyle.italic : FontStyle.normal,
+                decoration: TextDecoration.combine([
+                  if (isUnderline) TextDecoration.underline,
+                  if (isStrikethrough) TextDecoration.lineThrough,
+                ]),
+                decorationColor: textColor,
+                color: textColor,
+              ),
+            );
+          }),
         ),
       ),
     );
