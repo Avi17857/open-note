@@ -198,11 +198,21 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
+  double _preferredFontSize = 15.0;
+  double get preferredFontSize => _preferredFontSize;
+
+  void setPreferredFontSize(double size) {
+    if (_preferredFontSize == size) return;
+    _preferredFontSize = size;
+    notifyListeners();
+  }
+
   HeadingLevel _activeTextHeading = HeadingLevel.none;
   bool _activeTextBold = false;
   bool _activeTextItalic = false;
   bool _activeTextUnderline = false;
   bool _activeTextStrikethrough = false;
+  double? _activeTextFontSize;
   Color? _activeTextColor;
   Color? _activeTextHighlight;
 
@@ -216,10 +226,27 @@ class CanvasController extends ChangeNotifier {
       _activeRichTextController?.isSelectionUnderline ?? _activeTextUnderline;
   bool get activeTextStrikethrough =>
       _activeRichTextController?.isSelectionStrikethrough ?? _activeTextStrikethrough;
+  double get activeTextFontSize =>
+      _activeRichTextController?.activeFontSize ??
+      _activeTextFontSize ??
+      (activeTextBox?.defaultFontSize ?? _preferredFontSize);
   Color? get activeTextColor =>
       _activeRichTextController?.currentTextColor ?? _activeTextColor;
   Color? get activeTextHighlight =>
       _activeRichTextController?.currentHighlightColor ?? _activeTextHighlight;
+
+  void setFontSize(double size) {
+    _activeTextFontSize = size;
+    if (_activeRichTextController != null) {
+      _activeRichTextController!.setFontSize(size);
+    }
+    final box = activeTextBox;
+    if (box != null && box.text.isEmpty) {
+      box.defaultFontSize = size;
+      updateTextBox(box);
+    }
+    notifyListeners();
+  }
 
   void toggleBold() {
     if (_activeRichTextController != null) {
@@ -440,6 +467,7 @@ class CanvasController extends ChangeNotifier {
       position: position,
       width: width,
       text: text,
+      defaultFontSize: _preferredFontSize,
     );
     targetPage.textBoxes = [...targetPage.textBoxes, newBox];
     _activeTextBoxId = newBox.id;

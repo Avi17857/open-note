@@ -19,8 +19,10 @@ class RichTextEditingController extends TextEditingController {
   bool _typingItalic = false;
   bool _typingUnderline = false;
   bool _typingStrikethrough = false;
+  double? _typingFontSize;
   Color? _typingColor;
   Color? _typingHighlightColor;
+  final double _defaultFontSize;
 
   RichTextEditingController({
     super.text,
@@ -30,9 +32,10 @@ class RichTextEditingController extends TextEditingController {
     bool defaultItalic = false,
     bool defaultUnderline = false,
     bool defaultStrikethrough = false,
+    double? defaultFontSize,
     Color? defaultColor,
     Color? defaultHighlight,
-  }) {
+  }) : _defaultFontSize = defaultFontSize ?? 15.0 {
     _spans = spans != null ? List.from(spans) : [];
     _previousText = text;
     _typingHeading = defaultHeading;
@@ -40,9 +43,12 @@ class RichTextEditingController extends TextEditingController {
     _typingItalic = defaultItalic;
     _typingUnderline = defaultUnderline;
     _typingStrikethrough = defaultStrikethrough;
+    _typingFontSize = defaultFontSize;
     _typingColor = defaultColor;
     _typingHighlightColor = defaultHighlight;
   }
+
+  double get defaultFontSize => _defaultFontSize;
 
   List<RichTextSpan> get spans => List.unmodifiable(_spans);
 
@@ -99,6 +105,7 @@ class RichTextEditingController extends TextEditingController {
       _typingItalic = hitSpan.italic;
       _typingUnderline = hitSpan.underline;
       _typingStrikethrough = hitSpan.strikethrough;
+      _typingFontSize = hitSpan.fontSize;
       _typingColor = hitSpan.color;
       _typingHighlightColor = hitSpan.highlightColor;
     } else {
@@ -107,6 +114,7 @@ class RichTextEditingController extends TextEditingController {
       _typingItalic = false;
       _typingUnderline = false;
       _typingStrikethrough = false;
+      _typingFontSize = null;
       _typingColor = null;
       _typingHighlightColor = null;
     }
@@ -213,6 +221,7 @@ class RichTextEditingController extends TextEditingController {
           italic: _typingItalic,
           underline: _typingUnderline,
           strikethrough: _typingStrikethrough,
+          fontSize: _typingFontSize,
           color: _typingColor,
           highlightColor: _typingHighlightColor,
           heading: _typingHeading,
@@ -229,6 +238,7 @@ class RichTextEditingController extends TextEditingController {
         span.italic == _typingItalic &&
         span.underline == _typingUnderline &&
         span.strikethrough == _typingStrikethrough &&
+        span.fontSize == _typingFontSize &&
         span.color == _typingColor &&
         span.highlightColor == _typingHighlightColor;
   }
@@ -239,6 +249,7 @@ class RichTextEditingController extends TextEditingController {
       _typingItalic ||
       _typingUnderline ||
       _typingStrikethrough ||
+      _typingFontSize != null ||
       _typingColor != null ||
       _typingHighlightColor != null;
 
@@ -269,6 +280,7 @@ class RichTextEditingController extends TextEditingController {
         a.italic == b.italic &&
         a.underline == b.underline &&
         a.strikethrough == b.strikethrough &&
+        a.fontSize == b.fontSize &&
         a.color == b.color &&
         a.highlightColor == b.highlightColor;
   }
@@ -419,6 +431,24 @@ class RichTextEditingController extends TextEditingController {
     return HeadingLevel.none;
   }
 
+  double get activeFontSize {
+    final sel = effectiveSelection;
+    if (sel.isCollapsed) {
+      if (_typingFontSize != null) return _typingFontSize!;
+      if (_typingHeading != HeadingLevel.none) {
+        return _typingHeading.defaultFontSize;
+      }
+      return _defaultFontSize;
+    }
+    for (final s in _spans) {
+      if (s.overlaps(sel.start, sel.end)) {
+        if (s.fontSize != null) return s.fontSize!;
+        if (s.heading != HeadingLevel.none) return s.heading.defaultFontSize;
+      }
+    }
+    return _typingFontSize ?? _defaultFontSize;
+  }
+
   bool _checkSelectionAttribute(bool Function(RichTextSpan) check) {
     final sel = effectiveSelection;
     if (sel.isCollapsed) return false;
@@ -551,6 +581,20 @@ class RichTextEditingController extends TextEditingController {
         addIfMissing: color != null
             ? (s, e) => RichTextSpan(start: s, end: e, highlightColor: color)
             : null,
+      );
+    }
+    notifyListeners();
+  }
+
+  void setFontSize(double size) {
+    final sel = effectiveSelection;
+    _typingFontSize = size;
+    if (!sel.isCollapsed && sel.start < sel.end) {
+      _applyAttribute(
+        sel.start,
+        sel.end,
+        (s) => s.copyWith(fontSize: size),
+        addIfMissing: (s, e) => RichTextSpan(start: s, end: e, fontSize: size),
       );
     }
     notifyListeners();

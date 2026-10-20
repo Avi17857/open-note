@@ -11,6 +11,22 @@ import 'package:open_note/features/canvas/presentation/widgets/tool_icon.dart';
 class DrawingToolbar extends StatelessWidget {
   final CanvasController controller;
 
+  static const List<double> _standardFontSizes = [
+    10.0,
+    12.0,
+    14.0,
+    15.0,
+    16.0,
+    18.0,
+    20.0,
+    24.0,
+    28.0,
+    32.0,
+    40.0,
+    48.0,
+    64.0,
+  ];
+
   const DrawingToolbar({super.key, required this.controller});
 
   @override
@@ -348,6 +364,11 @@ class DrawingToolbar extends StatelessWidget {
                 if (activeTool == ToolType.text) ...[
                   // 1. Heading Selector Dropdown
                   _buildHeadingDropdown(context),
+
+                  const SizedBox(width: 8),
+
+                  // 1.5. Font Size Selector & Stepper
+                  _buildFontSizeControls(context),
 
                   const SizedBox(width: 8),
 
@@ -875,6 +896,232 @@ class DrawingToolbar extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildFontSizeControls(BuildContext context) {
+    final currentSize = controller.activeTextFontSize;
+    final defaultSize = controller.preferredFontSize;
+    final isDark = controller.isDarkMode;
+
+    void stepDown() {
+      final smaller =
+          _standardFontSizes.where((s) => s < currentSize - 0.5).toList();
+      final newSize = smaller.isNotEmpty
+          ? smaller.last
+          : (currentSize - 2).clamp(8.0, 96.0);
+      controller.setFontSize(newSize);
+    }
+
+    void stepUp() {
+      final larger =
+          _standardFontSizes.where((s) => s > currentSize + 0.5).toList();
+      final newSize = larger.isNotEmpty
+          ? larger.first
+          : (currentSize + 2).clamp(8.0, 96.0);
+      controller.setFontSize(newSize);
+    }
+
+    return Container(
+      height: 30,
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF2C2C36) : Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: isDark ? const Color(0xFF444455) : Colors.grey.shade300,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Decrease font size button
+          Tooltip(
+            message: 'Decrease font size',
+            child: InkWell(
+              key: const Key('decrease_font_size_button'),
+              borderRadius:
+                  const BorderRadius.horizontal(left: Radius.circular(5)),
+              onTap: stepDown,
+              child: Container(
+                width: 22,
+                height: 28,
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.remove_rounded,
+                  size: 14,
+                  color: isDark ? Colors.white70 : Colors.black87,
+                ),
+              ),
+            ),
+          ),
+
+          // Dropdown for selecting font size
+          PopupMenuButton<double>(
+            key: const Key('font_size_dropdown'),
+            tooltip: 'Font size',
+            initialValue: currentSize,
+            onSelected: (size) {
+              if (size > 0) {
+                controller.setFontSize(size);
+              }
+            },
+            color: isDark ? const Color(0xFF2C2C36) : Colors.white,
+            padding: EdgeInsets.zero,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              height: 28,
+              alignment: Alignment.center,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '${currentSize.round()}pt',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  Icon(
+                    Icons.arrow_drop_down,
+                    size: 16,
+                    color: isDark ? Colors.white70 : Colors.black87,
+                  ),
+                ],
+              ),
+            ),
+            itemBuilder: (context) => [
+              // Option to set current font size as default
+              PopupMenuItem<double>(
+                value: -1,
+                onTap: () {
+                  controller.setPreferredFontSize(currentSize);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Default font size set to ${currentSize.round()}pt for new text boxes',
+                      ),
+                      duration: const Duration(seconds: 2),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                },
+                child: Row(
+                  children: [
+                    Icon(
+                      (currentSize - defaultSize).abs() < 0.5
+                          ? Icons.check_circle_rounded
+                          : Icons.bookmark_add_outlined,
+                      size: 16,
+                      color: (currentSize - defaultSize).abs() < 0.5
+                          ? const Color(0xFF4CAF50)
+                          : (isDark
+                              ? const Color(0xFF64B5F6)
+                              : const Color(0xFF007AFF)),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        (currentSize - defaultSize).abs() < 0.5
+                            ? '${currentSize.round()}pt is default for new boxes'
+                            : 'Set ${currentSize.round()}pt as default for new boxes',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(),
+              ..._standardFontSizes.map((size) {
+                final isCurrent = (currentSize - size).abs() < 0.5;
+                final isDefault = (defaultSize - size).abs() < 0.5;
+                return PopupMenuItem<double>(
+                  value: size,
+                  child: Row(
+                    children: [
+                      if (isCurrent)
+                        Icon(
+                          Icons.check,
+                          size: 15,
+                          color: isDark
+                              ? const Color(0xFF64B5F6)
+                              : const Color(0xFF007AFF),
+                        )
+                      else
+                        const SizedBox(width: 15),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${size.toInt()} pt',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight:
+                              isCurrent ? FontWeight.bold : FontWeight.normal,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                      if (isDefault) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? const Color(0xFF1E2838)
+                                : Colors.blue.shade50,
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(
+                              color: isDark
+                                  ? const Color(0xFF2E4568)
+                                  : Colors.blue.shade200,
+                            ),
+                          ),
+                          child: Text(
+                            'Default',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: isDark
+                                  ? const Color(0xFF90CAF9)
+                                  : Colors.blue.shade700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              }),
+            ],
+          ),
+
+          // Increase font size button
+          Tooltip(
+            message: 'Increase font size',
+            child: InkWell(
+              key: const Key('increase_font_size_button'),
+              borderRadius:
+                  const BorderRadius.horizontal(right: Radius.circular(5)),
+              onTap: stepUp,
+              child: Container(
+                width: 22,
+                height: 28,
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.add_rounded,
+                  size: 14,
+                  color: isDark ? Colors.white70 : Colors.black87,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

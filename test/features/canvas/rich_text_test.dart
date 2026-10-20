@@ -7,6 +7,7 @@ import 'package:open_note/features/canvas/models/note_text_box.dart';
 import 'package:open_note/features/canvas/models/rich_text_span.dart';
 import 'package:open_note/features/canvas/models/tool_type.dart';
 import 'package:open_note/features/canvas/presentation/note_canvas.dart';
+import 'package:open_note/features/canvas/presentation/widgets/drawing_toolbar.dart';
 import 'package:open_note/features/canvas/presentation/widgets/text_box_widget.dart';
 
 void main() {
@@ -596,6 +597,119 @@ void main() {
       // VERIFY: Absolutely NO text box was created and no active text box ID!
       expect(controller.textBoxes, isEmpty);
       expect(controller.activeTextBoxId, isNull);
+    });
+  });
+
+  group('Font Sizing & Default Font Size Preference Tests', () {
+    test('RichTextSpan copyWith clearFontSize clears font size', () {
+      final span = RichTextSpan(start: 0, end: 5, fontSize: 24.0, bold: true);
+      final cleared = span.copyWith(clearFontSize: true);
+      expect(cleared.fontSize, isNull);
+      expect(cleared.bold, isTrue);
+    });
+
+    test('NoteTextBox defaultFontSize serialization and deserialization', () {
+      final box = NoteTextBox(
+        id: 'box_font_size',
+        position: const Offset(50, 100),
+        defaultFontSize: 20.0,
+        text: 'Custom size note',
+      );
+
+      final json = box.toJson();
+      expect(json['defaultFontSize'], 20.0);
+
+      final restored = NoteTextBox.fromJson(json);
+      expect(restored.defaultFontSize, 20.0);
+    });
+
+    test('RichTextEditingController setFontSize modifies selection and collapsed typing', () {
+      final controller = RichTextEditingController(
+        text: 'Hello World',
+        defaultFontSize: 16.0,
+      );
+
+      expect(controller.activeFontSize, 16.0);
+
+      // 1. Select "World" (indices 6..11) and set font size to 32.0
+      controller.selection = const TextSelection(baseOffset: 6, extentOffset: 11);
+      controller.setFontSize(32.0);
+
+      expect(controller.activeFontSize, 32.0);
+      expect(controller.spans.length, 1);
+      expect(controller.spans.first.fontSize, 32.0);
+      expect(controller.spans.first.start, 6);
+      expect(controller.spans.first.end, 11);
+
+      // 2. Move cursor to collapsed offset inside "Hello" (index 2)
+      controller.selection = const TextSelection.collapsed(offset: 2);
+      expect(controller.activeFontSize, 16.0);
+
+      // 3. Move cursor inside "World" (index 8)
+      controller.selection = const TextSelection.collapsed(offset: 8);
+      expect(controller.activeFontSize, 32.0);
+    });
+
+    test('CanvasController preferred default font size configures new text boxes', () {
+      final controller = CanvasController();
+      expect(controller.preferredFontSize, 15.0);
+
+      // Configure preferred default font size
+      controller.setPreferredFontSize(24.0);
+      expect(controller.preferredFontSize, 24.0);
+
+      // Newly added text box should automatically receive 24.0
+      final newBox = controller.addTextBox(const Offset(100, 100));
+      expect(newBox.defaultFontSize, 24.0);
+      expect(controller.activeTextFontSize, 24.0);
+
+      // Changing font size on controller updates active box default
+      controller.setFontSize(18.0);
+      expect(controller.activeTextFontSize, 18.0);
+      expect(newBox.defaultFontSize, 18.0);
+    });
+
+    testWidgets('DrawingToolbar displays font size controls and updates size', (tester) async {
+      final controller = CanvasController();
+      controller.setTool(ToolType.text);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DrawingToolbar(controller: controller),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Verify decrease, dropdown, and increase controls are present
+      expect(find.byKey(const Key('decrease_font_size_button')), findsOneWidget);
+      expect(find.byKey(const Key('font_size_dropdown')), findsOneWidget);
+      expect(find.byKey(const Key('increase_font_size_button')), findsOneWidget);
+
+      // Initial font size is 15pt
+      expect(find.text('15pt'), findsOneWidget);
+
+      // Tap increase button -> jumps to next standard size (16pt)
+      await tester.tap(find.byKey(const Key('increase_font_size_button')));
+      await tester.pumpAndSettle();
+
+      expect(controller.activeTextFontSize, 16.0);
+      expect(find.text('16pt'), findsOneWidget);
+
+      // Tap increase again -> jumps to 18pt
+      await tester.tap(find.byKey(const Key('increase_font_size_button')));
+      await tester.pumpAndSettle();
+
+      expect(controller.activeTextFontSize, 18.0);
+      expect(find.text('18pt'), findsOneWidget);
+
+      // Tap decrease -> jumps back to 16pt
+      await tester.tap(find.byKey(const Key('decrease_font_size_button')));
+      await tester.pumpAndSettle();
+
+      expect(controller.activeTextFontSize, 16.0);
+      expect(find.text('16pt'), findsOneWidget);
     });
   });
 }

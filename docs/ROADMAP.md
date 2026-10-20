@@ -61,8 +61,10 @@ OpenNote bridges the gap between the fluid inking experience of **Samsung Notes*
   - `T` (Text) tool on main toolbar: tap canvas to spawn a new text box.
   - Borderless editing with subtle drag-handles to move and resize anywhere on the page.
   - Native soft-keyboard and Samsung S-Pen handwriting-to-text integration.
-- [ ] **Arbitrary Font Sizing:**
-  - Font size picker / stepper in formatting toolbar (10, 12, 14, 16, 18, 20, 24, 28, 32, 48 pt, etc.) to set fine-grained font sizes on selected text spans.
+- [x] **Arbitrary Font Sizing & Default Size Setting:**
+  - Font size picker & stepper in formatting toolbar (10, 12, 14, 15, 16, 18, 20, 24, 28, 32, 40, 48, 64 pt) to set fine-grained font sizes on selected text spans or future typing.
+  - Configurable preferred default font size setting for new text boxes with instant persistence.
+  - Full integration with JSON serialization, rich text boundary slicing, and PDF export.
 
 ---
 

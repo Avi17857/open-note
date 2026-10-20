@@ -590,6 +590,7 @@ class PdfExportService {
       final spans = _buildPdfTextSpans(
         text: box.text,
         spans: box.spans,
+        defaultFontSize: box.defaultFontSize ?? 15.0,
         scale: scale,
         regularFont: regularFont,
       );
@@ -618,6 +619,7 @@ class PdfExportService {
   static List<pw.InlineSpan> _buildPdfTextSpans({
     required String text,
     required List<RichTextSpan> spans,
+    double defaultFontSize = 15.0,
     required double scale,
     required pw.Font regularFont,
   }) {
@@ -641,7 +643,7 @@ class PdfExportService {
         pw.TextSpan(
           text: safeText(text),
           style: pw.TextStyle(
-            fontSize: 15.0 * scale,
+            fontSize: defaultFontSize * scale,
             color: PdfColors.black,
           ),
         ),
@@ -688,7 +690,7 @@ class PdfExportService {
         }
       }
 
-      double effectiveFontSize = 15.0;
+      double effectiveFontSize = defaultFontSize;
       if (segFontSize != null) {
         effectiveFontSize = segFontSize;
       } else if (segHeading != HeadingLevel.none) {

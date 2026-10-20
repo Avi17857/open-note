@@ -224,6 +224,8 @@ class _NoteCanvasState extends State<NoteCanvas>
         defaultStrikethrough: widget.controller.activeTextStrikethrough,
         defaultColor: widget.controller.activeTextColor,
         defaultHighlight: widget.controller.activeTextHighlight,
+        defaultFontSize:
+            box.defaultFontSize ?? widget.controller.preferredFontSize,
       );
       ctrl.addListener(() {
         box.text = ctrl!.text;

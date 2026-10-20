@@ -165,7 +165,7 @@ class _TextBoxWidgetState extends State<TextBoxWidget> {
                       keyboardType: TextInputType.multiline,
                       cursorColor: isDark ? Colors.white : AppColors.primary,
                       style: TextStyle(
-                        fontSize: 15.0,
+                        fontSize: widget.textBox.defaultFontSize ?? 15.0,
                         color: isDark ? Colors.white : Colors.black87,
                         decorationColor: isDark ? Colors.white : Colors.black87,
                         height: 1.4,

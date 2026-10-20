@@ -10,6 +10,7 @@ class NoteTextBox {
   String text;
   List<RichTextSpan> spans;
   TextDirection? textDirection;
+  double? defaultFontSize;
 
   NoteTextBox({
     required this.id,
@@ -19,6 +20,7 @@ class NoteTextBox {
     this.text = '',
     List<RichTextSpan>? spans,
     this.textDirection,
+    this.defaultFontSize,
   }) : spans = spans ?? [];
 
   /// Minimum width allowed when resizing
@@ -55,6 +57,7 @@ class NoteTextBox {
     String? text,
     List<RichTextSpan>? spans,
     TextDirection? textDirection,
+    double? defaultFontSize,
   }) {
     return NoteTextBox(
       id: id ?? this.id,
@@ -66,6 +69,7 @@ class NoteTextBox {
           ? List.from(spans)
           : this.spans.map((s) => s.copyWith()).toList(),
       textDirection: textDirection ?? this.textDirection,
+      defaultFontSize: defaultFontSize ?? this.defaultFontSize,
     );
   }
 
@@ -79,6 +83,7 @@ class NoteTextBox {
       'text': text,
       'spans': spans.map((s) => s.toJson()).toList(),
       if (textDirection != null) 'textDirection': textDirection!.name,
+      if (defaultFontSize != null) 'defaultFontSize': defaultFontSize,
     };
   }
 
@@ -100,6 +105,7 @@ class NoteTextBox {
       textDirection: dirStr == 'rtl'
           ? TextDirection.rtl
           : (dirStr == 'ltr' ? TextDirection.ltr : null),
+      defaultFontSize: (json['defaultFontSize'] as num?)?.toDouble(),
     );
   }
 }
