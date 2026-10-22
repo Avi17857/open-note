@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:open_note/features/canvas/controllers/canvas_controller.dart';
+import 'package:open_note/features/canvas/models/canvas_mode.dart';
 import 'package:open_note/features/notebook/models/note_document.dart';
 import 'package:open_note/features/notebook/models/note_page.dart';
 import 'package:open_note/features/storage/note_storage_service.dart';
@@ -62,7 +63,11 @@ class NotebookController extends ChangeNotifier {
     _notes = [_currentNote];
     _currentPageIndex = 0;
     _lastCanvasContentVersion = canvasController.contentVersion;
-    canvasController.loadPages(_currentNote.pages, clearHistory: true);
+    canvasController.loadPages(
+      _currentNote.pages,
+      mode: _currentNote.canvasMode,
+      clearHistory: true,
+    );
     _saveStatus = SaveStatus.saved;
   }
 
@@ -94,7 +99,11 @@ class NotebookController extends ChangeNotifier {
         if (initialNoteUntouched && loadedNotes.isNotEmpty) {
           _currentNote = loadedNotes.first;
           _currentPageIndex = 0;
-          canvasController.loadPages(_currentNote.pages, clearHistory: true);
+          canvasController.loadPages(
+            _currentNote.pages,
+            mode: _currentNote.canvasMode,
+            clearHistory: true,
+          );
           _lastCanvasContentVersion = canvasController.contentVersion;
         }
         _saveStatus = SaveStatus.saved;
@@ -121,11 +130,17 @@ class NotebookController extends ChangeNotifier {
         _currentPageIndex != canvasController.activePageIndex;
     final contentChanged =
         canvasController.contentVersion != _lastCanvasContentVersion;
+    final modeChanged =
+        _currentNote.canvasMode != canvasController.canvasMode;
 
-    if (pageCountChanged || activeIndexChanged || contentChanged) {
+    if (pageCountChanged ||
+        activeIndexChanged ||
+        contentChanged ||
+        modeChanged) {
       _lastCanvasContentVersion = canvasController.contentVersion;
       _currentNote.pages =
           canvasController.pages.map((p) => p.clone()).toList();
+      _currentNote.canvasMode = canvasController.canvasMode;
       _currentPageIndex = canvasController.activePageIndex;
       _currentNote.updatedAt = DateTime.now();
 
@@ -190,19 +205,27 @@ class NotebookController extends ChangeNotifier {
 
     _currentNote = note;
     _currentPageIndex = 0;
-    canvasController.loadPages(_currentNote.pages, clearHistory: true);
+    canvasController.loadPages(
+      _currentNote.pages,
+      mode: _currentNote.canvasMode,
+      clearHistory: true,
+    );
     _lastCanvasContentVersion = canvasController.contentVersion;
     _saveStatus = SaveStatus.saved;
     notifyListeners();
   }
 
-  void createNewNote({String title = 'New Note'}) {
+  void createNewNote({
+    String title = 'New Note',
+    CanvasMode canvasMode = CanvasMode.paged,
+  }) {
     flushAutoSave();
     _syncCurrentNote();
 
     final newNote = NoteDocument(
       id: 'note_${DateTime.now().millisecondsSinceEpoch}',
       title: title,
+      canvasMode: canvasMode,
     );
     _notes.insert(0, newNote);
     _storageService.saveNote(newNote.id, newNote.toJson());
@@ -244,6 +267,26 @@ class NotebookController extends ChangeNotifier {
     }
   }
 
+  void setCanvasMode(CanvasMode mode) {
+    if (_currentNote.canvasMode == mode &&
+        canvasController.canvasMode == mode) {
+      return;
+    }
+    canvasController.setCanvasMode(mode);
+    _currentNote.canvasMode = mode;
+    _currentNote.updatedAt = DateTime.now();
+    _scheduleAutoSave();
+    notifyListeners();
+  }
+
+  void toggleCanvasMode() {
+    setCanvasMode(
+      _currentNote.canvasMode == CanvasMode.paged
+          ? CanvasMode.infinite
+          : CanvasMode.paged,
+    );
+  }
+
   void addPage() {
     canvasController.addPage();
   }
@@ -255,6 +298,7 @@ class NotebookController extends ChangeNotifier {
   void _syncCurrentNote() {
     _currentNote.pages =
         canvasController.pages.map((p) => p.clone()).toList();
+    _currentNote.canvasMode = canvasController.canvasMode;
     _currentNote.updatedAt = DateTime.now();
   }
 

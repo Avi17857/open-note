@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:open_note/core/theme/app_colors.dart';
+import 'package:open_note/features/canvas/models/canvas_mode.dart';
 import 'package:open_note/features/notebook/controllers/notebook_controller.dart';
 import 'package:open_note/features/notebook/models/note_document.dart';
 
@@ -128,17 +129,58 @@ class NotebookDrawer extends StatelessWidget {
                 child: Row(
                   children: [
                     Expanded(
-                      child: FilledButton.icon(
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('New Note'),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                        ),
-                        onPressed: () {
-                          controller.createNewNote();
+                      child: PopupMenuButton<CanvasMode>(
+                        tooltip: 'Create New Note',
+                        offset: const Offset(0, 44),
+                        onSelected: (mode) {
+                          controller.createNewNote(
+                            title: mode.isInfinite
+                                ? 'Infinite Canvas Note'
+                                : 'New Note',
+                            canvasMode: mode,
+                          );
                           Navigator.pop(context);
                         },
+                        itemBuilder: (ctx) => [
+                          const PopupMenuItem(
+                            value: CanvasMode.paged,
+                            child: Row(
+                              children: [
+                                Icon(Icons.description_outlined, size: 20),
+                                SizedBox(width: 8),
+                                Text('Standard Paged Note'),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: CanvasMode.infinite,
+                            child: Row(
+                              children: [
+                                Icon(Icons.all_out_rounded, size: 20),
+                                SizedBox(width: 8),
+                                Text('Infinite Canvas Note'),
+                              ],
+                            ),
+                          ),
+                        ],
+                        child: IgnorePointer(
+                          child: FilledButton.icon(
+                            icon: const Icon(Icons.add, size: 18),
+                            label: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text('New Note'),
+                                SizedBox(width: 4),
+                                Icon(Icons.arrow_drop_down, size: 18),
+                              ],
+                            ),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                            ),
+                            onPressed: () {},
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -185,9 +227,11 @@ class NotebookDrawer extends StatelessWidget {
                             selectedTileColor:
                                 AppColors.primary.withValues(alpha: 0.1),
                             leading: Icon(
-                              isSelected
-                                  ? Icons.description
-                                  : Icons.description_outlined,
+                              note.canvasMode.isInfinite
+                                  ? Icons.all_out_rounded
+                                  : (isSelected
+                                      ? Icons.description
+                                      : Icons.description_outlined),
                               color: isSelected
                                   ? AppColors.primary
                                   : Colors.grey.shade600,
@@ -206,7 +250,7 @@ class NotebookDrawer extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                             ),
                             subtitle: Text(
-                              '${note.pages.length} page${note.pages.length == 1 ? '' : 's'} • ${_formatRelativeTime(note.updatedAt)}',
+                              '${note.canvasMode.isInfinite ? '∞ Infinite' : '${note.pages.length} page${note.pages.length == 1 ? '' : 's'}'} • ${_formatRelativeTime(note.updatedAt)}',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.grey.shade600,

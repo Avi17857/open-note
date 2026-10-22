@@ -98,6 +98,7 @@ class PdfExportService {
               page: page,
               template: template,
               mode: mode,
+              isInfinite: document.canvasMode.isInfinite,
               pageFormat: pageFormat,
               regularFont: regularFont,
             );
@@ -139,6 +140,7 @@ class PdfExportService {
     required NotePage page,
     required PageTemplate template,
     required PdfExportMode mode,
+    bool isInfinite = false,
     required PdfPageFormat pageFormat,
     required pw.Font regularFont,
   }) {
@@ -148,10 +150,38 @@ class PdfExportService {
     double scale = 1.0;
     double offsetX = 0.0;
     double offsetY = 0.0;
-    material.Rect? contentBounds;
 
-    if (mode == PdfExportMode.shrinkToFit) {
-      contentBounds = _calculatePageContentBounds(page);
+    if (isInfinite) {
+      // In Infinite Canvas Mode, fit precisely whatever content exists on the canvas:
+      final exactBounds = _calculateExactContentBounds(page);
+
+      if (exactBounds == null) {
+        // Page has no content: clean empty page
+        scale = 1.0;
+        offsetX = 32.0;
+        offsetY = 32.0;
+      } else {
+        const margin = 32.0;
+        final availableWidth = pageFormat.width - (margin * 2);
+        final availableHeight = pageFormat.height - (margin * 2);
+
+        // If content dimensions exceed the printable page area, scale down proportionally:
+        if (exactBounds.width > availableWidth ||
+            exactBounds.height > availableHeight) {
+          final scaleX = availableWidth / exactBounds.width;
+          final scaleY = availableHeight / exactBounds.height;
+          scale = min(1.0, min(scaleX, scaleY));
+        } else {
+          // Content fits without shrinking: keep 1:1 natural readable size!
+          scale = 1.0;
+        }
+
+        // Anchor content cleanly starting at top-left margin (32pt)
+        offsetX = margin - (exactBounds.left * scale);
+        offsetY = margin - (exactBounds.top * scale);
+      }
+    } else if (mode == PdfExportMode.shrinkToFit) {
+      final contentBounds = _calculatePageContentBounds(page);
 
       // Check if content overflows standard page boundary
       final hasOverflow = contentBounds.left < 0 ||
@@ -183,6 +213,7 @@ class PdfExportService {
         _buildBackground(
           template: template,
           mode: mode,
+          isInfinite: isInfinite,
           scale: scale,
           offsetX: offsetX,
           offsetY: offsetY,
@@ -224,6 +255,30 @@ class PdfExportService {
     );
   }
 
+  /// Calculates the exact bounding rectangle enclosing all content on the page
+  /// (strokes, images, text boxes). Returns null if the page has no content.
+  static material.Rect? _calculateExactContentBounds(NotePage page) {
+    material.Rect? bounds;
+
+    for (final stroke in page.strokes) {
+      if (stroke.points.isNotEmpty) {
+        bounds = bounds == null
+            ? stroke.bounds
+            : bounds.expandToInclude(stroke.bounds);
+      }
+    }
+
+    for (final img in page.images) {
+      bounds = bounds == null ? img.bounds : bounds.expandToInclude(img.bounds);
+    }
+
+    for (final box in page.textBoxes) {
+      bounds = bounds == null ? box.bounds : bounds.expandToInclude(box.bounds);
+    }
+
+    return bounds;
+  }
+
   /// Calculates the union bounding rectangle of all page contents.
   static material.Rect _calculatePageContentBounds(NotePage page) {
     material.Rect bounds = material.Rect.fromLTWH(
@@ -254,11 +309,63 @@ class PdfExportService {
   static pw.Widget _buildBackground({
     required PageTemplate template,
     required PdfExportMode mode,
+    bool isInfinite = false,
     required double scale,
     required double offsetX,
     required double offsetY,
     required PdfPageFormat pageFormat,
   }) {
+    if (isInfinite) {
+      // In Infinite Canvas Mode, the entire PDF page is seamless paper without
+      // pasteboard containers or miniature sheet borders.
+      return pw.Stack(
+        children: [
+          // Solid white paper covering the entire PDF page
+          pw.Container(
+            width: pageFormat.width,
+            height: pageFormat.height,
+            color: PdfColors.white,
+          ),
+
+          // Ruled or Grid Lines covering the entire PDF page
+          if (template != PageTemplate.blank)
+            pw.CustomPaint(
+              size: PdfPoint(pageFormat.width, pageFormat.height),
+              painter: (PdfGraphics canvas, PdfPoint size) {
+                const lineSpacing = 32.0;
+                final lineColor = template == PageTemplate.ruled
+                    ? PdfColor.fromInt(AppColors.ruledLine.toARGB32())
+                    : PdfColor.fromInt(AppColors.gridLine.toARGB32());
+
+                canvas.setColor(lineColor);
+                canvas.setLineWidth(0.5);
+
+                // Horizontal lines across entire page width
+                for (double y = lineSpacing;
+                    y < pageFormat.height;
+                    y += lineSpacing) {
+                  final pdfY = pageFormat.height - y;
+                  canvas.moveTo(0, pdfY);
+                  canvas.lineTo(pageFormat.width, pdfY);
+                  canvas.strokePath();
+                }
+
+                // Vertical lines for Grid across entire page height
+                if (template == PageTemplate.grid) {
+                  for (double x = lineSpacing;
+                      x < pageFormat.width;
+                      x += lineSpacing) {
+                    canvas.moveTo(x, pageFormat.height);
+                    canvas.lineTo(x, 0);
+                    canvas.strokePath();
+                  }
+                }
+              },
+            ),
+        ],
+      );
+    }
+
     final standardWidth = AppConstants.defaultPageSize.width;
     final standardHeight = AppConstants.defaultPageSize.height;
 

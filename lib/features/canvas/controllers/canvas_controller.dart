@@ -17,6 +17,7 @@ import 'package:open_note/features/canvas/presentation/widgets/selection_toolbar
 import 'package:open_note/features/canvas/services/clipboard_image_service.dart';
 import 'package:open_note/features/canvas/services/eraser_service.dart';
 import 'package:open_note/features/canvas/services/lasso_service.dart';
+import 'package:open_note/features/canvas/models/canvas_mode.dart';
 import 'package:open_note/features/notebook/models/note_page.dart';
 
 class CanvasController extends ChangeNotifier {
@@ -124,7 +125,77 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
+  CanvasMode _canvasMode = CanvasMode.paged;
+  CanvasMode get canvasMode => _canvasMode;
+  bool get isInfinite => _canvasMode == CanvasMode.infinite;
+
+  void setCanvasMode(CanvasMode mode) {
+    if (_canvasMode == mode) return;
+    _recordHistory();
+    _redoStack.clear();
+    deselect();
+
+    if (mode == CanvasMode.infinite) {
+      // Transitioning to Infinite Canvas Mode:
+      // Merge multiple pages into page 1 with their vertical spatial offsets preserved
+      if (_pages.length > 1) {
+        final List<Stroke> mergedStrokes = [];
+        final List<NoteTextBox> mergedTextBoxes = [];
+        final List<NoteImage> mergedImages = [];
+
+        for (int i = 0; i < _pages.length; i++) {
+          final p = _pages[i];
+          final yOffset = AppConstants.pageHeaderHeight + i * AppConstants.pagePitch;
+
+          for (final stroke in p.strokes) {
+            mergedStrokes.add(stroke.copyWith(
+              points: stroke.points
+                  .map((pt) => pt.copyWith(dy: pt.dy + yOffset))
+                  .toList(),
+            ));
+          }
+
+          for (final box in p.textBoxes) {
+            mergedTextBoxes.add(box.copyWith(
+              position: Offset(box.position.dx, box.position.dy + yOffset),
+            ));
+          }
+
+          for (final img in p.images) {
+            mergedImages.add(img.copyWith(
+              position: Offset(img.position.dx, img.position.dy + yOffset),
+            ));
+          }
+        }
+
+        _pages = [
+          NotePage(
+            id: _pages.first.id,
+            pageNumber: 1,
+            strokes: mergedStrokes,
+            textBoxes: mergedTextBoxes,
+            images: mergedImages,
+          ),
+        ];
+        _activePageIndex = 0;
+      }
+    }
+
+    _canvasMode = mode;
+    _contentVersion++;
+    notifyListeners();
+  }
+
+  void toggleCanvasMode() {
+    setCanvasMode(
+      _canvasMode == CanvasMode.paged ? CanvasMode.infinite : CanvasMode.paged,
+    );
+  }
+
   NotePage addPage() {
+    if (_canvasMode == CanvasMode.infinite) {
+      _canvasMode = CanvasMode.paged;
+    }
     _recordHistory();
     _redoStack.clear();
     final newPage = NotePage(
@@ -154,7 +225,11 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void loadPages(List<NotePage> pages, {bool clearHistory = false}) {
+  void loadPages(
+    List<NotePage> pages, {
+    CanvasMode mode = CanvasMode.paged,
+    bool clearHistory = false,
+  }) {
     if (clearHistory) {
       _undoStack.clear();
       _redoStack.clear();
@@ -162,6 +237,7 @@ class CanvasController extends ChangeNotifier {
       _recordHistory();
       _redoStack.clear();
     }
+    _canvasMode = mode;
     _pages = pages.isNotEmpty
         ? pages.map((p) => p.clone()).toList()
         : [NotePage(id: 'page_1', pageNumber: 1)];

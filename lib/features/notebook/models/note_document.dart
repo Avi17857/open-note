@@ -1,9 +1,11 @@
+import 'package:open_note/features/canvas/models/canvas_mode.dart';
 import 'package:open_note/features/notebook/models/note_page.dart';
 
 class NoteDocument {
   final String id;
   String title;
   List<NotePage> pages;
+  CanvasMode canvasMode;
   DateTime createdAt;
   DateTime updatedAt;
   int version;
@@ -13,6 +15,7 @@ class NoteDocument {
     required this.id,
     required this.title,
     List<NotePage>? pages,
+    this.canvasMode = CanvasMode.paged,
     DateTime? createdAt,
     DateTime? updatedAt,
     this.version = 1,
@@ -26,6 +29,7 @@ class NoteDocument {
       id: newId ?? id,
       title: title,
       pages: pages.map((p) => p.clone()).toList(),
+      canvasMode: canvasMode,
       createdAt: createdAt,
       updatedAt: updatedAt,
       version: version,
@@ -37,6 +41,7 @@ class NoteDocument {
     String? id,
     String? title,
     List<NotePage>? pages,
+    CanvasMode? canvasMode,
     DateTime? createdAt,
     DateTime? updatedAt,
     int? version,
@@ -46,6 +51,7 @@ class NoteDocument {
       id: id ?? this.id,
       title: title ?? this.title,
       pages: pages ?? this.pages.map((p) => p.clone()).toList(),
+      canvasMode: canvasMode ?? this.canvasMode,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       version: version ?? this.version,
@@ -58,6 +64,7 @@ class NoteDocument {
       'id': id,
       'title': title,
       'pages': pages.map((p) => p.toJson()).toList(),
+      'canvasMode': canvasMode.name,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
       'version': version,
@@ -73,6 +80,9 @@ class NoteDocument {
       pages: rawPages
           .map((p) => NotePage.fromJson(p as Map<String, dynamic>))
           .toList(),
+      canvasMode: json['canvasMode'] == 'infinite'
+          ? CanvasMode.infinite
+          : CanvasMode.paged,
       createdAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'])
           : null,

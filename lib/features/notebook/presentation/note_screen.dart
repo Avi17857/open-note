@@ -54,6 +54,7 @@ class _NoteScreenState extends State<NoteScreen> {
       builder: (context, _) {
         final totalPages = _notebookController.currentNote.pages.length;
         final isDark = _canvasController.isDarkMode;
+        final isInfinite = _notebookController.currentNote.canvasMode.isInfinite;
 
         return Scaffold(
           resizeToAvoidBottomInset: false,
@@ -89,7 +90,7 @@ class _NoteScreenState extends State<NoteScreen> {
               ],
             ),
             actions: [
-              // Page Count badge & Add Page button
+              // Page Count / Infinite Canvas badge
               Container(
                 margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -99,7 +100,9 @@ class _NoteScreenState extends State<NoteScreen> {
                 ),
                 child: Center(
                   child: Text(
-                    '$totalPages ${totalPages == 1 ? 'Page' : 'Pages'}',
+                    isInfinite
+                        ? '∞ Infinite Canvas'
+                        : '$totalPages ${totalPages == 1 ? 'Page' : 'Pages'}',
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w600,
@@ -108,10 +111,26 @@ class _NoteScreenState extends State<NoteScreen> {
                   ),
                 ),
               ),
+              if (!isInfinite)
+                IconButton(
+                  icon: const Icon(Icons.add_box_outlined, color: Colors.white),
+                  tooltip: 'Add Page',
+                  onPressed: _notebookController.addPage,
+                ),
+
+              // Canvas Mode Toggle (Paged <-> Infinite)
               IconButton(
-                icon: const Icon(Icons.add_box_outlined, color: Colors.white),
-                tooltip: 'Add Page',
-                onPressed: _notebookController.addPage,
+                key: const Key('canvas_mode_toggle_button'),
+                icon: Icon(
+                  isInfinite
+                      ? Icons.view_agenda_outlined
+                      : Icons.all_out_rounded,
+                  color: Colors.white,
+                ),
+                tooltip: isInfinite
+                    ? 'Switch to Standard Paged Mode'
+                    : 'Switch to Infinite Canvas Mode',
+                onPressed: _notebookController.toggleCanvasMode,
               ),
 
               // Page Template Picker (Blank, Ruled, Grid)

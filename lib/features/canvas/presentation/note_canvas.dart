@@ -12,6 +12,7 @@ import 'package:open_note/features/canvas/models/tool_type.dart';
 import 'package:open_note/features/canvas/presentation/painters/active_stroke_painter.dart';
 import 'package:open_note/features/canvas/presentation/painters/completed_strokes_painter.dart';
 import 'package:open_note/features/canvas/presentation/painters/eraser_cursor_painter.dart';
+import 'package:open_note/features/canvas/presentation/painters/infinite_background_painter.dart';
 import 'package:open_note/features/canvas/presentation/painters/lasso_path_painter.dart';
 import 'package:open_note/features/canvas/presentation/painters/page_background_painter.dart';
 import 'package:open_note/features/canvas/presentation/painters/selection_painter.dart';
@@ -111,6 +112,32 @@ class _NoteCanvasState extends State<NoteCanvas>
 
     final currentScale = _getScale(matrix);
     final scale = currentScale.clamp(minScale, maxScale);
+
+    if (widget.controller.isInfinite) {
+      final result = matrix.clone();
+      if ((scale - currentScale).abs() > 0.0001) {
+        final factor = scale / currentScale;
+        result.storage[0] *= factor;
+        result.storage[5] *= factor;
+      }
+
+      // OneNote-style top-left boundary:
+      // Stops scrolling endlessly up and left into negative coordinates,
+      // while allowing completely unbounded panning down (+Y) and right (+X).
+      const maxTy = 40.0;
+      final maxTx = max(
+        40.0,
+        (viewportSize.width - scale * AppConstants.defaultPageSize.width) / 2.0,
+      );
+
+      final tx = matrix.storage[12];
+      final ty = matrix.storage[13];
+
+      result.storage[12] = min(maxTx, tx).toDouble();
+      result.storage[13] = min(maxTy, ty).toDouble();
+      return result;
+    }
+
     final tx = matrix.storage[12];
     final ty = matrix.storage[13];
 
@@ -330,29 +357,31 @@ class _NoteCanvasState extends State<NoteCanvas>
     final tx = matrix.storage[12];
     final ty = matrix.storage[13];
 
-    final activeIdx = widget.controller.activePageIndex;
-    final pageSheetTop = activeIdx * AppConstants.pagePitch;
-    final pageSheetHeight =
-        AppConstants.pageHeaderHeight + AppConstants.defaultPageSize.height;
+    final isInfinite = widget.controller.isInfinite;
+    final activeIdx = isInfinite ? 0 : widget.controller.activePageIndex;
+    final pageSheetTop = isInfinite ? 0.0 : activeIdx * AppConstants.pagePitch;
+    final pageSheetHeight = isInfinite
+        ? AppConstants.defaultPageSize.height
+        : AppConstants.pageHeaderHeight + AppConstants.defaultPageSize.height;
 
     final vPageTop = ty + scale * pageSheetTop;
     final vPageBottom = ty + scale * (pageSheetTop + pageSheetHeight);
     final vPageLeft = tx;
     final vPageRight = tx + scale * AppConstants.defaultPageSize.width;
 
-    // Active page is scrolled above viewport
+    // Active page / content origin is scrolled above viewport
     if (vPageBottom < 40.0) {
       return OffScreenDirection.above;
     }
-    // Active page is scrolled below viewport
+    // Active page / content origin is scrolled below viewport
     if (vPageTop > viewportSize.height - 40.0) {
       return OffScreenDirection.below;
     }
-    // Active page is scrolled off to the left
+    // Active page / content origin is scrolled off to the left
     if (vPageRight < 40.0) {
       return OffScreenDirection.left;
     }
-    // Active page is scrolled off to the right
+    // Active page / content origin is scrolled off to the right
     if (vPageLeft > viewportSize.width - 40.0) {
       return OffScreenDirection.right;
     }
@@ -368,6 +397,7 @@ class _NoteCanvasState extends State<NoteCanvas>
         widget.controller.isTransforming) {
       return const SizedBox.shrink();
     }
+    final isInfinite = widget.controller.isInfinite;
 
     final (IconData icon, Alignment alignment, EdgeInsets padding) =
         switch (direction) {
@@ -410,7 +440,9 @@ class _NoteCanvasState extends State<NoteCanvas>
           shadowColor: Colors.black26,
           child: InkWell(
             borderRadius: BorderRadius.circular(20),
-            onTap: () => _scrollToPage(activePage),
+            onTap: isInfinite
+                ? _resetViewAndCenter
+                : () => _scrollToPage(activePage),
             child: Container(
               padding:
                   const EdgeInsets.symmetric(horizontal: 14.0, vertical: 8.0),
@@ -427,7 +459,7 @@ class _NoteCanvasState extends State<NoteCanvas>
                   Icon(icon, size: 16, color: AppColors.primary),
                   const SizedBox(width: 6),
                   Text(
-                    'Page ${activePage + 1}',
+                    isInfinite ? 'Back to Origin' : 'Page ${activePage + 1}',
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
@@ -534,10 +566,12 @@ class _NoteCanvasState extends State<NoteCanvas>
 
   bool _isPointerOverAnyTextBox(Offset scenePos) {
     if (widget.controller.activeTool != ToolType.text) return false;
+    final isInfinite = widget.controller.isInfinite;
     for (int i = 0; i < widget.controller.pages.length; i++) {
       final page = widget.controller.pages[i];
-      final pageOriginY =
-          AppConstants.pageHeaderHeight + i * AppConstants.pagePitch;
+      final pageOriginY = isInfinite
+          ? 0.0
+          : AppConstants.pageHeaderHeight + i * AppConstants.pagePitch;
       for (final box in page.textBoxes) {
         final boxRect = Rect.fromLTWH(
           box.position.dx,
@@ -559,10 +593,12 @@ class _NoteCanvasState extends State<NoteCanvas>
         widget.controller.selectedImageId != null;
     if (!canInteract) return false;
 
+    final isInfinite = widget.controller.isInfinite;
     for (int i = 0; i < widget.controller.pages.length; i++) {
       final page = widget.controller.pages[i];
-      final pageOriginY =
-          AppConstants.pageHeaderHeight + i * AppConstants.pagePitch;
+      final pageOriginY = isInfinite
+          ? 0.0
+          : AppConstants.pageHeaderHeight + i * AppConstants.pagePitch;
       for (final img in page.images) {
         final isSelected = widget.controller.selectedImageId == img.id;
         final bottomExtra = isSelected ? 72.0 : 16.0;
@@ -695,11 +731,14 @@ class _NoteCanvasState extends State<NoteCanvas>
 
                       final scenePos =
                           _transformationController.toScene(e.localPosition);
+                      final isInfinite = widget.controller.isInfinite;
                       final boardX = scenePos.dx;
                       final boardY = scenePos.dy;
-                      final touchPageIndex = (boardY / AppConstants.pagePitch)
-                          .floor()
-                          .clamp(0, widget.controller.pages.length - 1);
+                      final touchPageIndex = isInfinite
+                          ? 0
+                          : (boardY / AppConstants.pagePitch)
+                              .floor()
+                              .clamp(0, widget.controller.pages.length - 1);
                       final totalPagesHeight =
                           widget.controller.pages.length * AppConstants.pagePitch;
                       final pageTopY = touchPageIndex * AppConstants.pagePitch;
@@ -708,12 +747,14 @@ class _NoteCanvasState extends State<NoteCanvas>
                       bool isInteractingWithSelection = false;
                       if (widget.controller.hasSelection &&
                           widget.controller.selectionBounds != null) {
-                        final activeIdx = widget.controller.activePageIndex;
-                        final canvasOrigin = Offset(
-                          0.0,
-                          AppConstants.pageHeaderHeight +
-                              activeIdx * AppConstants.pagePitch,
-                        );
+                        final activeIdx = isInfinite ? 0 : widget.controller.activePageIndex;
+                        final canvasOrigin = isInfinite
+                            ? Offset.zero
+                            : Offset(
+                                0.0,
+                                AppConstants.pageHeaderHeight +
+                                    activeIdx * AppConstants.pagePitch,
+                              );
                         final globalBounds = widget.controller
                             .selectionBounds!
                             .shift(canvasOrigin);
@@ -742,7 +783,7 @@ class _NoteCanvasState extends State<NoteCanvas>
                       }
 
                       // Priority 2: Filter non-lasso interactions over UI buttons/headers
-                      if (!isInteractingWithSelection) {
+                      if (!isInteractingWithSelection && !isInfinite) {
                         final isOverAddButton = boardX >= 0 &&
                             boardX <= AppConstants.defaultPageSize.width &&
                             boardY >= totalPagesHeight &&
@@ -766,11 +807,13 @@ class _NoteCanvasState extends State<NoteCanvas>
                         }
                       }
 
-                      final activeIdx = widget.controller.activePageIndex;
+                      final activeIdx = isInfinite ? 0 : widget.controller.activePageIndex;
                       final localX = boardX;
-                      final localY = boardY -
-                          (AppConstants.pageHeaderHeight +
-                              activeIdx * AppConstants.pagePitch);
+                      final localY = isInfinite
+                          ? boardY
+                          : boardY -
+                              (AppConstants.pageHeaderHeight +
+                                  activeIdx * AppConstants.pagePitch);
 
                       // If touching inside an existing text box or image,
                       // let the widget's own gesture detectors handle drag, resize, and interaction
@@ -832,11 +875,14 @@ class _NoteCanvasState extends State<NoteCanvas>
 
                       final scenePos =
                           _transformationController.toScene(e.localPosition);
-                      final activeIdx = widget.controller.activePageIndex;
+                      final isInfinite = widget.controller.isInfinite;
+                      final activeIdx = isInfinite ? 0 : widget.controller.activePageIndex;
                       final localX = scenePos.dx;
-                      final localY = scenePos.dy -
-                          (AppConstants.pageHeaderHeight +
-                              activeIdx * AppConstants.pagePitch);
+                      final localY = isInfinite
+                          ? scenePos.dy
+                          : scenePos.dy -
+                              (AppConstants.pageHeaderHeight +
+                                  activeIdx * AppConstants.pagePitch);
 
                       widget.controller.onPointerMove(
                         Offset(localX, localY),
@@ -863,11 +909,14 @@ class _NoteCanvasState extends State<NoteCanvas>
 
                         final scenePos =
                             _transformationController.toScene(e.localPosition);
-                        final activeIdx = widget.controller.activePageIndex;
+                        final isInfinite = widget.controller.isInfinite;
+                        final activeIdx = isInfinite ? 0 : widget.controller.activePageIndex;
                         final localX = scenePos.dx;
-                        final localY = scenePos.dy -
-                            (AppConstants.pageHeaderHeight +
-                                activeIdx * AppConstants.pagePitch);
+                        final localY = isInfinite
+                            ? scenePos.dy
+                            : scenePos.dy -
+                                (AppConstants.pageHeaderHeight +
+                                    activeIdx * AppConstants.pagePitch);
 
                         widget.controller.onPointerUp(
                           Offset(localX, localY),
@@ -894,7 +943,19 @@ class _NoteCanvasState extends State<NoteCanvas>
                     },
                     child: InteractiveViewer(
                       transformationController: _transformationController,
-                      boundaryMargin: const EdgeInsets.all(4000),
+                      boundaryMargin: widget.controller.isInfinite
+                          ? EdgeInsets.only(
+                              top: 40.0,
+                              left: max(
+                                40.0,
+                                (viewportSize.width -
+                                        AppConstants.defaultPageSize.width) /
+                                    2.0,
+                              ),
+                              right: 1000000.0,
+                              bottom: 1000000.0,
+                            )
+                          : const EdgeInsets.all(4000),
                       minScale: AppConstants.minScale,
                       maxScale: AppConstants.maxScale,
                       panEnabled: isPanTool,
@@ -914,22 +975,25 @@ class _NoteCanvasState extends State<NoteCanvas>
                         child: UnboundedHitTestStack(
                           clipBehavior: Clip.none,
                           children: [
-                            // Layer 1: Multi-page vertical sheets
-                            Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                for (int i = 0;
-                                    i < widget.controller.pages.length;
-                                    i++) ...[
-                                  _buildPageSheet(i),
-                                  const SizedBox(
-                                    height: AppConstants.pageGap,
-                                  ),
+                            // Layer 1: Multi-page vertical sheets OR Infinite Canvas
+                            if (!widget.controller.isInfinite)
+                              Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  for (int i = 0;
+                                      i < widget.controller.pages.length;
+                                      i++) ...[
+                                    _buildPageSheet(i),
+                                    const SizedBox(
+                                      height: AppConstants.pageGap,
+                                    ),
+                                  ],
+                                  _buildAddPageButton(),
+                                  const SizedBox(height: 48.0),
                                 ],
-                                _buildAddPageButton(),
-                                const SizedBox(height: 48.0),
-                              ],
-                            ),
+                              )
+                            else
+                              _buildInfiniteCanvas(viewportSize),
 
                             // Layer 2: All text boxes across all pages
                             for (int i = 0;
@@ -946,12 +1010,14 @@ class _NoteCanvasState extends State<NoteCanvas>
                                       box.id,
                                   richController:
                                       _getOrCreateTextController(box),
-                                  boardPosition: Offset(
-                                    box.position.dx,
-                                    AppConstants.pageHeaderHeight +
-                                        i * AppConstants.pagePitch +
-                                        box.position.dy,
-                                  ),
+                                  boardPosition: widget.controller.isInfinite
+                                      ? box.position
+                                      : Offset(
+                                          box.position.dx,
+                                          AppConstants.pageHeaderHeight +
+                                              i * AppConstants.pagePitch +
+                                              box.position.dy,
+                                        ),
                                 ),
 
                             // Layer 2.5: All interactive images across all pages
@@ -968,12 +1034,14 @@ class _NoteCanvasState extends State<NoteCanvas>
                                           .selectedImageId ==
                                       img.id,
                                   pageIndex: i,
-                                  boardPosition: Offset(
-                                    img.position.dx,
-                                    AppConstants.pageHeaderHeight +
-                                        i * AppConstants.pagePitch +
-                                        img.position.dy,
-                                  ),
+                                  boardPosition: widget.controller.isInfinite
+                                      ? img.position
+                                      : Offset(
+                                          img.position.dx,
+                                          AppConstants.pageHeaderHeight +
+                                              i * AppConstants.pagePitch +
+                                              img.position.dy,
+                                        ),
                                   renderRaster: false,
                                 ),
 
@@ -990,14 +1058,16 @@ class _NoteCanvasState extends State<NoteCanvas>
                                 if (lassoPoints.isEmpty) {
                                   return const SizedBox.shrink();
                                 }
-                                final activePageIdx =
-                                    widget.controller.activePageIndex;
-                                final canvasOrigin = Offset(
-                                  0.0,
-                                  AppConstants.pageHeaderHeight +
-                                      activePageIdx *
-                                          AppConstants.pagePitch,
-                                );
+                                final isInfinite = widget.controller.isInfinite;
+                                final activePageIdx = isInfinite ? 0 : widget.controller.activePageIndex;
+                                final canvasOrigin = isInfinite
+                                    ? Offset.zero
+                                    : Offset(
+                                        0.0,
+                                        AppConstants.pageHeaderHeight +
+                                            activePageIdx *
+                                                AppConstants.pagePitch,
+                                      );
                                 return Transform.translate(
                                   offset: canvasOrigin,
                                   child: CustomPaint(
@@ -1049,6 +1119,182 @@ class _NoteCanvasState extends State<NoteCanvas>
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildInfiniteCanvas(Size viewportSize) {
+    final page = widget.controller.pages.first;
+    final isDark = widget.controller.isDarkMode;
+
+    final renderedStrokes = widget.controller.isTransforming
+        ? page.strokes
+            .where((s) => !widget.controller.selectedStrokes.contains(s))
+            .toList()
+        : page.strokes;
+
+    return SizedBox(
+      width: AppConstants.defaultPageSize.width,
+      height: AppConstants.defaultPageSize.height,
+      child: UnboundedHitTest(
+        child: UnboundedHitTestStack(
+          clipBehavior: Clip.none,
+          fit: StackFit.expand,
+          children: [
+            // 1. Seamless infinite paper background (ruled / grid lines)
+            ValueListenableBuilder<Matrix4>(
+              valueListenable: _transformationController,
+              builder: (context, matrix, _) {
+                final inverseMatrix = Matrix4.tryInvert(matrix);
+                final visibleTopLeft = inverseMatrix != null
+                    ? MatrixUtils.transformPoint(inverseMatrix, Offset.zero)
+                    : Offset.zero;
+                final visibleBottomRight = inverseMatrix != null
+                    ? MatrixUtils.transformPoint(
+                        inverseMatrix,
+                        Offset(viewportSize.width, viewportSize.height),
+                      )
+                    : Offset(viewportSize.width, viewportSize.height);
+                final visibleBounds =
+                    Rect.fromPoints(visibleTopLeft, visibleBottomRight);
+
+                return IgnorePointer(
+                  child: CustomPaint(
+                    painter: InfiniteBackgroundPainter(
+                      template: widget.template,
+                      isDarkMode: isDark,
+                      visibleBounds: visibleBounds,
+                    ),
+                  ),
+                );
+              },
+            ),
+
+            // 2. Images on page 0
+            for (final img in page.images)
+              Positioned(
+                key: ValueKey('page_raster_${img.id}'),
+                left: img.position.dx,
+                top: img.position.dy,
+                width: img.width,
+                height: img.height,
+                child: IgnorePointer(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: Image.memory(
+                      img.bytes,
+                      fit: BoxFit.fill,
+                      width: img.width,
+                      height: img.height,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          color: Colors.grey.shade200,
+                          alignment: Alignment.center,
+                          child: const Icon(
+                            Icons.broken_image_outlined,
+                            color: Colors.grey,
+                            size: 32,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+
+            // 3. Completed Highlighters
+            IgnorePointer(
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: CompletedStrokesPainter(
+                    renderedStrokes,
+                    layer: StrokeLayer.highlightersOnly,
+                    isDarkMode: isDark,
+                  ),
+                ),
+              ),
+            ),
+
+            // 4. Active Highlighter
+            IgnorePointer(
+              child: ValueListenableBuilder<List<StrokePoint>>(
+                valueListenable: widget.controller.currentStrokeNotifier,
+                builder: (context, currentPoints, _) {
+                  if (widget.controller.activeTool != ToolType.highlighter ||
+                      currentPoints.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  return RepaintBoundary(
+                    child: CustomPaint(
+                      painter: ActiveStrokePainter(
+                        points: currentPoints,
+                        color: widget.controller.activeColor,
+                        strokeWidth: widget.controller.strokeWidth,
+                        toolType: widget.controller.activeTool,
+                        isDarkMode: isDark,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+
+            // 5. Completed Pens & Fountain Pens
+            IgnorePointer(
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: CompletedStrokesPainter(
+                    renderedStrokes,
+                    layer: StrokeLayer.pensOnly,
+                    isDarkMode: isDark,
+                  ),
+                ),
+              ),
+            ),
+
+            // 6. Active Pen / Fountain Pen
+            IgnorePointer(
+              child: ValueListenableBuilder<List<StrokePoint>>(
+                valueListenable: widget.controller.currentStrokeNotifier,
+                builder: (context, currentPoints, _) {
+                  if (widget.controller.activeTool == ToolType.highlighter ||
+                      currentPoints.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  return RepaintBoundary(
+                    child: CustomPaint(
+                      painter: ActiveStrokePainter(
+                        points: currentPoints,
+                        color: widget.controller.activeColor,
+                        strokeWidth: widget.controller.strokeWidth,
+                        toolType: widget.controller.activeTool,
+                        isDarkMode: isDark,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+
+            // 7. Eraser Visual Cursor
+            ValueListenableBuilder<Offset?>(
+              valueListenable: widget.controller.eraserPointerNotifier,
+              builder: (context, eraserPos, _) {
+                if (eraserPos == null) {
+                  return const SizedBox.shrink();
+                }
+                return CustomPaint(
+                  painter: EraserCursorPainter(
+                    position: eraserPos,
+                    radius: widget.controller.eraserRadius,
+                    isAreaEraser:
+                        widget.controller.activeTool == ToolType.areaEraser,
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1337,11 +1583,15 @@ class _NoteCanvasState extends State<NoteCanvas>
   /// Global selection overlay rendered across the entire multi-page Column so dragged strokes,
   /// selection bounding boxes, and handles can cross page boundaries and margins without clipping.
   Widget _buildGlobalSelectionOverlay() {
-    final activePageIdx = widget.controller.activePageIndex;
-    final canvasOrigin = Offset(
-      0.0,
-      AppConstants.pageHeaderHeight + activePageIdx * AppConstants.pagePitch,
-    );
+    final isInfinite = widget.controller.isInfinite;
+    final activePageIdx = isInfinite ? 0 : widget.controller.activePageIndex;
+    final canvasOrigin = isInfinite
+        ? Offset.zero
+        : Offset(
+            0.0,
+            AppConstants.pageHeaderHeight +
+                activePageIdx * AppConstants.pagePitch,
+          );
     final globalBounds = widget.controller.selectionBounds!.shift(canvasOrigin);
 
     return Positioned.fill(
@@ -1379,11 +1629,15 @@ class _NoteCanvasState extends State<NoteCanvas>
   /// it is always 100% clickable anywhere on screen (both on-page and in the pasteboard)
   /// and maintains standard touch-target sizing without page boundary clipping.
   Widget _buildFloatingSelectionToolbar(Matrix4 matrix, Size viewportSize) {
-    final activePageIdx = widget.controller.activePageIndex;
-    final canvasOrigin = Offset(
-      0.0,
-      AppConstants.pageHeaderHeight + activePageIdx * AppConstants.pagePitch,
-    );
+    final isInfinite = widget.controller.isInfinite;
+    final activePageIdx = isInfinite ? 0 : widget.controller.activePageIndex;
+    final canvasOrigin = isInfinite
+        ? Offset.zero
+        : Offset(
+            0.0,
+            AppConstants.pageHeaderHeight +
+                activePageIdx * AppConstants.pagePitch,
+          );
     final globalBounds = widget.controller.selectionBounds!.shift(canvasOrigin);
     final sceneToolbarRect = SelectionToolbar.getToolbarRect(
       globalBounds,

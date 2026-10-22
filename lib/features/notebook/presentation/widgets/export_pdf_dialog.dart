@@ -44,7 +44,9 @@ class _ExportPdfDialogState extends State<ExportPdfDialog> {
   @override
   void initState() {
     super.initState();
-    _selectedMode = PdfExportMode.pageBounds;
+    _selectedMode = widget.document.canvasMode.isInfinite
+        ? PdfExportMode.shrinkToFit
+        : PdfExportMode.pageBounds;
     _selectedTemplate = widget.initialTemplate;
   }
 
